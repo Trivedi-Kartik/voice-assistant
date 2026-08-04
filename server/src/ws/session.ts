@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ClientMessage, ServerMessage, ToolResult } from "../protocol.js";
 import { runLlmStep, type ChatMessage } from "../llm.js";
 import { transcribeAudio } from "../stt.js";
-import { isGroqRateLimit, isRetryableToolUseFailure } from "../groqErrors.js";
+import { isGroqRateLimit, isRetryableToolUseFailure, getRetryAfterSeconds, formatWaitTime } from "../groqErrors.js";
 import { toolSchemasForCapabilities, SERVER_TOOL_SCHEMAS, SERVER_TOOL_NAMES } from "../tools/schemas.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
@@ -48,6 +48,18 @@ function buildSystemPrompt(memories: RelevantMemory[]): string {
   if (memories.length === 0) return SYSTEM_PROMPT;
   const facts = memories.map((m) => `- ${m.factText}`).join("\n");
   return `${SYSTEM_PROMPT}\n\nThings you know about this user from past conversations:\n${facts}`;
+}
+
+// Groq's own rate limit (distinct from this app's per-user daily cap, see
+// rateLimit.ts) can mean "wait a couple seconds" or "wait for tomorrow's quota
+// reset" — those deserve different messages. Groq's `retry-after` header tells
+// us which; without checking it, a 10-minute wait was getting reported as "try
+// again in a few seconds," which is actively misleading.
+function rateLimitMessage(err: unknown): string {
+  const retryAfter = getRetryAfterSeconds(err);
+  return retryAfter !== null
+    ? `Groq's usage limit is temporarily reached — try again in about ${formatWaitTime(retryAfter)}.`
+    : "Things are a bit busy right now — please try again in a few seconds.";
 }
 
 const TOOL_TIMEOUT_MS = 12_000;
@@ -191,9 +203,7 @@ export class Session {
         this.send({
           type: "error",
           code: "stt_failed",
-          message: isGroqRateLimit(err)
-            ? "Things are a bit busy right now — please try again in a few seconds."
-            : "I didn't catch that clearly — could you try again?",
+          message: isGroqRateLimit(err) ? rateLimitMessage(err) : "I didn't catch that clearly — could you try again?",
         });
         return;
       }
@@ -254,7 +264,7 @@ export class Session {
       const message = isRetryableToolUseFailure(err)
         ? "I had trouble with that — try asking one thing at a time."
         : isGroqRateLimit(err)
-          ? "Things are a bit busy right now — please try again in a few seconds."
+          ? rateLimitMessage(err)
           : "Something went wrong processing that — try again.";
       this.send({ type: "error", code: "llm_failed", message });
       console.error("[session] turn failed", err);
