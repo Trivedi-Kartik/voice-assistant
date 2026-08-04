@@ -9,5 +9,18 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx"
-  }
+  },
+  // "Solution style" tsconfig (files: [] + references) — this file's own
+  // compilerOptions still apply to tsconfig.main.json/tsconfig.renderer.json via
+  // "extends", but this file itself compiles nothing. Without this, editors have
+  // no tsconfig.json inside src/renderer to find, so they walk up to THIS file —
+  // which, with no include/exclude, would implicitly include every .ts file under
+  // agent/ (main + renderer + shared) in one program. Main uses Node globals
+  // (process, NodeJS.Timeout); renderer uses DOM globals (window, setTimeout
+  // returning number) — merged into one program, those collide and produce
+  // real-looking editor errors that never show up in the actual per-target
+  // `tsc -p tsconfig.main.json` / `tsc -p tsconfig.renderer.json` builds (both of
+  // which stay green — see docs/SETUP.md troubleshooting).
+  "files": [],
+  "references": [{ "path": "./tsconfig.main.json" }, { "path": "./tsconfig.renderer.json" }]
 }

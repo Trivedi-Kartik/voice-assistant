@@ -11,3 +11,7 @@ server/prisma/migrations/
 # Electron/Vite build output
 agent/dist/
 agent/release/
+
+# TS project-references incremental build state (composite tsconfigs)
+*.tsbuildinfo
+agent/.tsbuildinfo/
