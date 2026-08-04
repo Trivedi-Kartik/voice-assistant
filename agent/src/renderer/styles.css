@@ -37,11 +37,39 @@ header {
    conversation log so the app reads as "talking to a bot", not a static form. */
 .orb-stage {
   flex: 1;
-  min-height: 220px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+}
+
+.mic-button {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #1f2937;
+  border: 1px solid #3a3d46;
+  color: #c7cdd6;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+  padding: 0;
+  margin: 0;
 }
+.mic-button:hover:not(:disabled) { background: #283242; color: #fff; }
+.mic-button:active:not(:disabled) { transform: scale(0.94); }
+.mic-button:disabled { opacity: 0.45; cursor: default; }
+.mic-button-listening {
+  background: #c62828;
+  color: #fff;
+  border-color: #c62828;
+  box-shadow: 0 0 0 6px rgba(198, 40, 40, 0.18);
+}
+.mic-button-listening:hover { background: #b71c1c; }
 
 .voice-orb {
   position: relative;

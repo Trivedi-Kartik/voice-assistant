@@ -8,6 +8,7 @@ import { StatusIndicator } from "./components/StatusIndicator";
 import { ConversationView } from "./components/ConversationView";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { VoiceOrb } from "./components/VoiceOrb";
+import { MicButton } from "./components/MicButton";
 
 export function App() {
   const [consented, setConsented] = useState<boolean | null>(null);
@@ -30,6 +31,28 @@ export function App() {
   const micCapture = useRef(new MicCapture());
   const ttsEngine = useRef(createTtsEngine());
 
+  // Single toggle used by BOTH the hotkey and the mic button, so there is one
+  // source of truth for "are we currently recording" — reads the store directly
+  // (not the destructured `micState` above) since this is called from an event
+  // handler registered once on mount, where a closed-over value would go stale.
+  function toggleMic() {
+    const current = useAppStore.getState().micState;
+    if (current === "idle") {
+      setMicState("listening");
+      window.jarvis.conversation.setActive(true);
+      micCapture.current.start(() => {
+        setMicPermissionWarning(true);
+        setMicState("idle");
+        window.jarvis.conversation.setActive(false);
+      });
+    } else if (current === "listening") {
+      micCapture.current.stop();
+      // setActive(false) happens once assistant_text/error actually arrives
+      // (see below) — the turn is still in flight (thinking) after this stop.
+    }
+    // "thinking"/"speaking": ignore — MicButton is disabled in those states.
+  }
+
   useEffect(() => {
     window.jarvis.consent.hasConsented().then(setConsented);
     window.jarvis.auth.getSession().then((s) => setLoggedIn(s.loggedIn));
@@ -47,25 +70,19 @@ export function App() {
     window.jarvis.conversation.onAssistantText((text) => {
       pushTurn({ role: "assistant", text });
       setMicState("speaking");
-      ttsEngine.current.speak(text).then(() => setMicState("idle"));
+      ttsEngine.current.speak(text).then(() => {
+        setMicState("idle");
+        window.jarvis.conversation.setActive(false);
+      });
     });
 
     window.jarvis.conversation.onError((payload) => {
       setError(payload);
       setMicState("idle");
+      window.jarvis.conversation.setActive(false);
     });
 
-    window.jarvis.hotkey.onToggle((active) => {
-      if (active) {
-        setMicState("listening");
-        micCapture.current.start(() => {
-          setMicPermissionWarning(true);
-          setMicState("idle");
-        });
-      } else {
-        micCapture.current.stop();
-      }
-    });
+    window.jarvis.hotkey.onPress(toggleMic);
     // Registered once on mount — main process is the single source of truth for
     // these events for the lifetime of the window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,6 +125,7 @@ export function App() {
 
       <div className="orb-stage">
         <VoiceOrb state={micState} />
+        <MicButton micState={micState} onClick={toggleMic} />
       </div>
 
       <ConversationView turns={turns} />

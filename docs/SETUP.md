@@ -49,9 +49,10 @@ npm run dev
 ```
 
 An Electron window opens. Accept the consent screen, sign up with any
-email/password (this hits your local backend), then press
-**Ctrl+Shift+Space** to start/stop recording. Try: *"Open Chrome and search top
-JavaScript frameworks 2026."*
+email/password (this hits your local backend), then either press
+**Ctrl+Shift+Space** or click the mic button to start/stop recording — both
+trigger the exact same toggle, so they can't get out of sync with each other.
+Try: *"Open Chrome and search top JavaScript frameworks 2026."*
 
 ## 4. Packaging the client for distribution
 
