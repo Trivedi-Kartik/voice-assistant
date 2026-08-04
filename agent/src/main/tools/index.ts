@@ -1,4 +1,5 @@
 import { BrowserWindow, dialog } from "electron";
+import { ZodError } from "zod";
 import type { ToolDefinition, ToolResult } from "./types.js";
 import { openAppTool } from "./openApp.js";
 import { closeAppTool } from "./closeApp.js";
@@ -58,10 +59,18 @@ export async function dispatchToolCall(name: string, rawArgs: unknown): Promise<
       ),
     ]);
   } catch (err) {
-    return {
-      ok: false,
-      message: err instanceof Error ? err.message : "Tool failed with an unexpected error.",
-    };
+    // ZodError.message is a raw JSON array of issues — not something to ever
+    // surface verbatim to a user (confirmed via real testing: this leaked
+    // as-is before this fix). Its *cause* (safeParseArgs sending non-object
+    // args) is fixed in llm.ts, but a validation error here should never
+    // look like a crash dump even if some other malformed input slips through.
+    const message =
+      err instanceof ZodError
+        ? "That request didn't look right — try again."
+        : err instanceof Error
+          ? err.message
+          : "Tool failed with an unexpected error.";
+    return { ok: false, message };
   }
 }
 

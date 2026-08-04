@@ -4,6 +4,22 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-04 — Fix zero-arg tool calls failing with a raw Zod error
+
+- **Real bug, found via live testing:** `take_screenshot_and_describe` (and
+  `read_clipboard` — any zero-argument tool) failed every time with
+  `Expected object, received null`. Root cause: `llm.ts`'s `safeParseArgs`
+  only caught JSON *parse* failures, but the model sometimes emits the
+  literal string `"null"` for "no arguments," which `JSON.parse` accepts
+  without throwing — so a bare `null` reached the client's
+  `z.object({}).parse(null)` downstream and threw. Fixed by normalizing any
+  non-object parsed result to `{}`.
+- **Also fixed:** that error's raw Zod issue array (`[{"code":"invalid_type",...}]`)
+  was leaking verbatim into the user-visible tool result — confirmed, not
+  hypothetical, since it's exactly what surfaced from the bug above.
+  `dispatchToolCall` (`agent/src/main/tools/index.ts`) now gives a plain
+  fallback message for any `ZodError` instead of its raw `.message`.
+
 ## 2026-08-04 — Phase 3 increment 4: `take_screenshot_and_describe`
 
 - **New tool: `take_screenshot_and_describe`.** Captures the primary display
