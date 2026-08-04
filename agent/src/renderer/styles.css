@@ -33,13 +33,125 @@ header {
   padding: 0 4px;
   font-size: 13px;
 }
-.conversation-view { flex: 1; overflow-y: auto; padding: 16px; }
+/* Orb stage: the actual focal point of the screen — fills the space above the
+   conversation log so the app reads as "talking to a bot", not a static form. */
+.orb-stage {
+  flex: 1;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.voice-orb {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.voice-orb-core {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #5a86d9, #294d8f 70%);
+  box-shadow: 0 0 44px rgba(74, 121, 214, 0.35);
+  transition: background 0.5s ease, box-shadow 0.5s ease;
+  z-index: 2;
+}
+.voice-orb-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(90, 134, 217, 0.35);
+  width: 150px;
+  height: 150px;
+  opacity: 0;
+}
+.voice-orb-ring-2 { width: 190px; height: 190px; }
+.voice-orb-label {
+  position: absolute;
+  bottom: -30px;
+  font-size: 13px;
+  color: #9aa4b2;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.voice-orb-idle .voice-orb-core { animation: orb-breathe 3.5s ease-in-out infinite; }
+
+.voice-orb-listening .voice-orb-core {
+  background: radial-gradient(circle at 35% 30%, #ff8a80, #c62828 70%);
+  box-shadow: 0 0 54px rgba(230, 74, 25, 0.5);
+  animation: orb-pulse-scale 1.1s ease-in-out infinite;
+}
+.voice-orb-listening .voice-orb-ring {
+  border-color: rgba(230, 74, 25, 0.45);
+  animation: orb-ring-pulse 1.6s ease-out infinite;
+}
+.voice-orb-listening .voice-orb-ring-2 { animation-delay: 0.4s; }
+
+.voice-orb-thinking .voice-orb-core {
+  background: conic-gradient(from 0deg, #5a86d9, #8e5fd6, #5a86d9);
+  animation: orb-rotate 2.2s linear infinite;
+  box-shadow: 0 0 44px rgba(142, 95, 214, 0.4);
+}
+
+.voice-orb-speaking .voice-orb-core {
+  background: radial-gradient(circle at 35% 30%, #69f0ae, #00897b 70%);
+  box-shadow: 0 0 54px rgba(0, 137, 123, 0.45);
+  animation: orb-pulse-scale 0.6s ease-in-out infinite;
+}
+.voice-orb-speaking .voice-orb-ring {
+  border-color: rgba(0, 137, 123, 0.45);
+  animation: orb-ring-pulse 1.1s ease-out infinite;
+}
+.voice-orb-speaking .voice-orb-ring-2 { animation-delay: 0.25s; }
+
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes orb-pulse-scale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+@keyframes orb-ring-pulse {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@keyframes orb-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.conversation-view { max-height: 40vh; overflow-y: auto; padding: 12px 16px 16px; }
 .conversation-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: #888; padding: 16px; text-align: center; }
-.turn { margin-bottom: 10px; padding: 8px 12px; border-radius: 8px; max-width: 80%; }
+.turn {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 80%;
+  animation: turn-in 0.25s ease-out;
+}
 .turn-user { background: #2a2d36; margin-left: auto; }
 .turn-assistant { background: #1c3d5a; }
-.error-banner, .warning-banner { background: #4a1f1f; color: #ffb3b3; padding: 8px 16px; font-size: 13px; }
+@keyframes turn-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.error-banner, .warning-banner {
+  background: #4a1f1f;
+  color: #ffb3b3;
+  padding: 8px 16px;
+  font-size: 13px;
+  animation: banner-in 0.2s ease-out;
+}
 .success-banner { background: #1f4a26; color: #b3ffbf; padding: 8px; font-size: 13px; margin-top: 8px; }
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 input, button {
   display: block;
   width: 100%;

@@ -7,6 +7,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { ConversationView } from "./components/ConversationView";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { VoiceOrb } from "./components/VoiceOrb";
 
 export function App() {
   const [consented, setConsented] = useState<boolean | null>(null);
@@ -87,7 +88,6 @@ export function App() {
       <header>
         <StatusIndicator
           connectionStatus={connectionStatus}
-          micState={micState}
           onRetry={() => window.jarvis.connection.retryNow()}
         />
         <button className="link-button" onClick={() => setShowSettings(true)}>
@@ -105,6 +105,10 @@ export function App() {
       )}
 
       {lastError && <div className="error-banner">{lastError.message}</div>}
+
+      <div className="orb-stage">
+        <VoiceOrb state={micState} />
+      </div>
 
       <ConversationView turns={turns} />
 

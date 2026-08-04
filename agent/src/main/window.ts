@@ -6,10 +6,10 @@ import path from "node:path";
 // no ipcRenderer, no require, no Node APIs. See docs/ARCHITECTURE.md.
 export function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 440,
-    height: 680,
-    minWidth: 360,
-    minHeight: 480,
+    width: 480,
+    height: 760,
+    minWidth: 380,
+    minHeight: 560,
     title: "Voice Agent",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),

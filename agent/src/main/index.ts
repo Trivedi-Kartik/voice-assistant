@@ -18,11 +18,6 @@ import { initAutoUpdater } from "./updater/autoUpdate.js";
 import { applyContentSecurityPolicy } from "./csp.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
-// The v1 tool set, all implemented by this client — advertised to the server so it
-// only ever offers tool schemas this device can actually execute. See
-// docs/ARCHITECTURE.md "Session management & isolation" (Device.capabilities).
-const DEVICE_CAPABILITIES = ["open_app", "web_search", "open_url"];
-
 let win: BrowserWindow;
 let conversationActive = false;
 
