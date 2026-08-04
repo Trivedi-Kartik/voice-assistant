@@ -29,7 +29,7 @@ export function LoginScreen() {
 
   return (
     <div className="login-screen">
-      <h1>Voice Agent</h1>
+      <h1>Karvix</h1>
       <p className="subtitle">Sign in to talk to your assistant.</p>
       <form onSubmit={submit}>
         <input

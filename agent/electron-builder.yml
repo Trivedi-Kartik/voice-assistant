@@ -1,5 +1,5 @@
-appId: co.dyrect.voiceagent
-productName: Voice Agent
+appId: co.dyrect.karvix
+productName: Karvix
 directories:
   output: release
   buildResources: build
@@ -15,5 +15,5 @@ nsis:
   createDesktopShortcut: true
 publish:
   provider: github
-  owner: your-github-org
-  repo: voice-agent
+  owner: Trivedi-Kartik
+  repo: voice-assistant
