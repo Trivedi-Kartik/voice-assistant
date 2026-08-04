@@ -15,6 +15,7 @@ import { registerIpcHandlers } from "./ipc/ipcHandlers.js";
 import { createMainWindow } from "./window.js";
 import { createTray } from "./tray/trayMenu.js";
 import { initAutoUpdater } from "./updater/autoUpdate.js";
+import { applyContentSecurityPolicy } from "./csp.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
 // The v1 tool set, all implemented by this client — advertised to the server so it
@@ -73,6 +74,7 @@ function afterLogout(): void {
 }
 
 app.whenReady().then(async () => {
+  applyContentSecurityPolicy(!app.isPackaged);
   win = createMainWindow();
 
   registerIpcHandlers({
