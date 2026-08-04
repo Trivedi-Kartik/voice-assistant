@@ -1,5 +1,6 @@
 import Groq from "groq-sdk";
 import type { ToolSchema } from "./tools/schemas.js";
+import { isGroqRateLimit, isRetryableToolUseFailure, sleep } from "./groqErrors.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -23,23 +24,12 @@ export interface LlmStepResult {
 
 const MODEL = "llama-3.3-70b-versatile";
 
-// Confirmed via real testing (not hypothetical): Llama 3.3 on Groq occasionally
-// generates a malformed tool call — literally `<function=open_app{...}</function>`
-// pseudo-XML instead of a proper structured call — and Groq's API rejects the
-// whole completion with a 400 `tool_use_failed` before it ever reaches us. This
-// is generation-quality noise, not a deterministic bug: the exact same messages
-// succeed on a retry most of the time. Without retrying, this surfaced to users
-// as an intermittent "something went wrong" on completely valid requests.
-const MAX_GENERATION_RETRIES = 4;
-
-// Exported so ws/session.ts can give a specific, actionable error message on the
-// rare case retries don't resolve it, instead of a generic failure — this is a
-// well-understood, expected occasional failure mode, not a mystery bug.
-export function isRetryableToolUseFailure(err: unknown): boolean {
-  if (!(err instanceof Groq.APIError) || err.status !== 400) return false;
-  const body = err.error as { error?: { code?: string } } | undefined;
-  return body?.error?.code === "tool_use_failed";
-}
+// Without retrying, both failure modes below surfaced to users as an
+// intermittent "something went wrong" on completely valid requests — see
+// groqErrors.ts for why each is retryable and docs/ARCHITECTURE.md "Known
+// reliability limitation" for the full story on tool_use_failed specifically.
+const MAX_GENERATION_RETRIES = 6;
+const RATE_LIMIT_RETRY_DELAY_MS = 1500;
 
 // One step of the tool-calling loop: send history + tool schemas, get back either
 // plain text (done) or one/more tool_calls. The caller (ws/session.ts) is
@@ -64,8 +54,10 @@ export async function runLlmStep(
       });
       break;
     } catch (err) {
-      if (attempt >= MAX_GENERATION_RETRIES || !isRetryableToolUseFailure(err)) throw err;
-      console.error(`[llm] retrying after malformed tool-call generation (attempt ${attempt})`, err);
+      const rateLimited = isGroqRateLimit(err);
+      if (attempt >= MAX_GENERATION_RETRIES || !(rateLimited || isRetryableToolUseFailure(err))) throw err;
+      console.error(`[llm] retrying (attempt ${attempt}, rateLimited=${rateLimited})`, err);
+      if (rateLimited) await sleep(RATE_LIMIT_RETRY_DELAY_MS);
     }
   }
 

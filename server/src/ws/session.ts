@@ -2,8 +2,9 @@ import type { WebSocket } from "ws";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import type { ClientMessage, ServerMessage, ToolResult } from "../protocol.js";
-import { runLlmStep, isRetryableToolUseFailure, type ChatMessage } from "../llm.js";
+import { runLlmStep, type ChatMessage } from "../llm.js";
 import { transcribeAudio } from "../stt.js";
+import { isGroqRateLimit, isRetryableToolUseFailure } from "../groqErrors.js";
 import { toolSchemasForCapabilities, SERVER_TOOL_SCHEMAS, SERVER_TOOL_NAMES } from "../tools/schemas.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
@@ -178,7 +179,33 @@ export class Session {
         return;
       }
 
-      const transcript = await transcribeAudio(apiKey, audio);
+      let transcript: string;
+      try {
+        transcript = await transcribeAudio(apiKey, audio);
+      } catch (err) {
+        // Distinct from the LLM-loop catch below: a genuinely corrupted/silent
+        // recording (or Groq being rate-limited on the STT call specifically)
+        // is a different failure than the LLM mishandling a valid transcript,
+        // and deserves a different, more specific message.
+        console.error("[session] transcription failed", err);
+        this.send({
+          type: "error",
+          code: "stt_failed",
+          message: isGroqRateLimit(err)
+            ? "Things are a bit busy right now — please try again in a few seconds."
+            : "I didn't catch that clearly — could you try again?",
+        });
+        return;
+      }
+
+      // Silence, background noise, or an utterance too short/unclear for Whisper
+      // to transcribe anything — don't waste an LLM call (and the user's daily
+      // turn) on empty input; just ask them to repeat.
+      if (!transcript) {
+        this.send({ type: "error", code: "stt_failed", message: "I didn't catch that — could you try again?" });
+        return;
+      }
+
       this.send({ type: "transcript", text: transcript });
       this.history.push({ role: "user", content: transcript });
 
@@ -220,14 +247,15 @@ export class Session {
       await this.persist();
       recordUsage(this.userId, {}).catch(() => {});
     } catch (err) {
-      // isRetryableToolUseFailure catches the exhausted-retries case too (see
-      // llm.ts) — Groq's Llama 3.3 occasionally can't produce a clean tool call
-      // for compound requests ("open X and search Y") even after retrying.
-      // Known, expected occasional failure — give a more actionable message
-      // than the generic fallback.
+      // Both checks catch the exhausted-retries case too (see llm.ts) — these
+      // are known, expected occasional failures (Groq's Llama 3.3 tool-call
+      // generation quirk, or genuine rate limiting), not mystery bugs, so give
+      // a more actionable message than the generic fallback.
       const message = isRetryableToolUseFailure(err)
         ? "I had trouble with that — try asking one thing at a time."
-        : "Something went wrong processing that — try again.";
+        : isGroqRateLimit(err)
+          ? "Things are a bit busy right now — please try again in a few seconds."
+          : "Something went wrong processing that — try again.";
       this.send({ type: "error", code: "llm_failed", message });
       console.error("[session] turn failed", err);
     } finally {
