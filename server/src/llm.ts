@@ -1,6 +1,6 @@
 import Groq from "groq-sdk";
 import type { ToolSchema } from "./tools/schemas.js";
-import { isGroqRateLimit, isRetryableToolUseFailure, sleep } from "./groqErrors.js";
+import { isGroqRateLimit, isRetryableToolUseFailure, getRetryAfterSeconds, sleep } from "./groqErrors.js";
 
 export type ChatRole = "system" | "user" | "assistant" | "tool";
 
@@ -30,6 +30,13 @@ const MODEL = "llama-3.3-70b-versatile";
 // reliability limitation" for the full story on tool_use_failed specifically.
 const MAX_GENERATION_RETRIES = 6;
 const RATE_LIMIT_RETRY_DELAY_MS = 1500;
+// If Groq says to wait longer than this, it's a quota reset (e.g. daily token
+// limit), not a momentary burst — retrying every 1.5s is pointless and just
+// burns the remaining retry budget for nothing. Fail fast instead so the user
+// gets an accurate wait time (see ws/session.ts) rather than a delayed generic
+// failure. Confirmed via real testing: a ~10min daily-quota reset produced 6
+// useless retries before this fix.
+const MAX_SHORT_RATE_LIMIT_WAIT_SECONDS = 5;
 
 // One step of the tool-calling loop: send history + tool schemas, get back either
 // plain text (done) or one/more tool_calls. The caller (ws/session.ts) is
@@ -55,7 +62,12 @@ export async function runLlmStep(
       break;
     } catch (err) {
       const rateLimited = isGroqRateLimit(err);
-      if (attempt >= MAX_GENERATION_RETRIES || !(rateLimited || isRetryableToolUseFailure(err))) throw err;
+      const retryAfter = rateLimited ? getRetryAfterSeconds(err) : null;
+      const isLongWait = retryAfter !== null && retryAfter > MAX_SHORT_RATE_LIMIT_WAIT_SECONDS;
+
+      if (isLongWait || attempt >= MAX_GENERATION_RETRIES || !(rateLimited || isRetryableToolUseFailure(err))) {
+        throw err;
+      }
       console.error(`[llm] retrying (attempt ${attempt}, rateLimited=${rateLimited})`, err);
       if (rateLimited) await sleep(RATE_LIMIT_RETRY_DELAY_MS);
     }
