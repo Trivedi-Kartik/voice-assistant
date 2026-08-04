@@ -90,7 +90,10 @@ class AuthManager {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.session.accessToken}` },
       body: JSON.stringify({ imageDataUri }),
     });
-    if (!res.ok) throw new Error(`describe_failed_${res.status}`);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(`describe_failed_${res.status}_${body.error ?? "unknown"}`);
+    }
     const data = (await res.json()) as { description: string };
     return data.description;
   }
