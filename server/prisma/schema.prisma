@@ -1,15 +1,18 @@
-// Durable, relational data only. Conversation transcripts are intentionally NOT modeled
-// here in v1 — they live ephemerally in Redis (short TTL, cleared on disconnect) to avoid
-// taking on a data-retention/privacy obligation before the core loop is validated.
-// See docs/ARCHITECTURE.md for the full reasoning.
+// Durable, relational data. As of Phase 2 (see ROADMAP.md), conversation
+// transcripts and per-user preference memory ARE persisted here — this is an
+// explicit, disclosed feature, not the v1 default (v1 kept transcripts ephemeral
+// in Redis only). See docs/ARCHITECTURE.md for the full reasoning and what
+// changed.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 model User {
@@ -23,10 +26,12 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  devices        Device[]
-  refreshTokens  RefreshToken[]
-  usageEvents    UsageEvent[]
+  devices         Device[]
+  refreshTokens   RefreshToken[]
+  usageEvents     UsageEvent[]
   toolInvocations ToolInvocation[]
+  conversations   Conversation[]
+  memoryFacts     MemoryFact[]
 
   @@map("users")
 }
@@ -99,4 +104,65 @@ model ToolInvocation {
 
   @@index([userId, createdAt])
   @@map("tool_invocations")
+}
+
+// A durable conversation thread — replaces the v1 ephemeral-only Redis buffer.
+// Redis (see redis.ts) is still used as a short-TTL cache for the in-flight
+// session's working history so a live turn doesn't round-trip Postgres on every
+// message; this table is the durable record that survives reconnects, app
+// restarts, and lets memory (below) be extracted from real history.
+model Conversation {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId     String?   @map("device_id") // metadata about where it started — NOT a partition boundary
+  title        String?
+  startedAt    DateTime  @default(now()) @map("started_at")
+  lastActiveAt DateTime  @default(now()) @map("last_active_at")
+  archived     Boolean   @default(false)
+
+  messages Message[]
+
+  @@index([userId, lastActiveAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // 'system' | 'user' | 'assistant' | 'tool'
+  content        String       @db.Text
+  toolName       String?      @map("tool_name")
+  toolCallId     String?      @map("tool_call_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  memoryFacts MemoryFact[]
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// Per-user preference memory (Phase 2) — e.g. "always search in Chrome, not
+// Edge". Populated only when the assistant explicitly calls the
+// remember_preference tool (server-handled, see tools/schemas.ts and
+// ws/session.ts) — never by passively/automatically scanning conversations,
+// which would be much harder to make predictable or explain to a user.
+// `embedding` is Prisma's `Unsupported` type: Prisma Client can't generate typed
+// accessors for pgvector's `vector` type, so all reads/writes to this column go
+// through raw SQL (see memory/memoryStore.ts) — the column still exists and is
+// indexed like any other, just not through the generated Client API.
+model MemoryFact {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  factText        String    @map("fact_text") @db.Text
+  embedding       Unsupported("vector(384)")?
+  sourceMessageId String?   @map("source_message_id")
+  sourceMessage   Message?  @relation(fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  lastUsedAt      DateTime? @map("last_used_at")
+
+  @@index([userId])
+  @@map("memory_facts")
 }
