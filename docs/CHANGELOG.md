@@ -4,6 +4,29 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-04 — Phase 3 increment 1: app control expansion (open + close)
+
+- **`open_app` whitelist widened:** from 6 browser/editor entries to a curated
+  list across browsers, editors, Office, media, communication apps (WhatsApp,
+  Teams, Slack, Discord, Zoom), and system utilities (camera, file explorer,
+  task manager, paint, settings, control panel, terminal, PowerShell). Moved
+  into a new shared `agent/src/main/tools/appRegistry.ts` so `open_app` and
+  the new `close_app` can't drift into two separate lists.
+- **New tool: `close_app`.** Force-closes a whitelisted running app via
+  `taskkill /IM <processName> /F` (fixed argv, same `execFile`-not-`exec()`
+  rule as every other tool). File Explorer, Settings, and Control Panel are
+  deliberately excluded — closing `explorer.exe` takes down the whole
+  taskbar/desktop shell, not one window.
+- **First real use of `sensitivity: "high"`:** that field sat inert since v1.
+  `close_app` is now gated by an Allow/Deny `dialog.showMessageBox` confirmation
+  in `dispatchToolCall` before it ever runs — `open_app` is unaffected, still
+  immediate. Consent screen copy updated to disclose closing apps.
+- Wired `close_app` through the four places that must stay in sync: server
+  `toolNames.ts`/`schemas.ts`, agent `toolContract.ts`/`deviceCapabilities.ts`.
+- **Not yet verified:** exact `start`/`taskkill` names for less-common apps
+  (Slack, Zoom, Notepad++, etc.) — this dev environment is Linux, so real
+  execution needs a pass on an actual Windows machine.
+
 ## 2026-08-04 — Named the product, fixed real bugs from live testing, shipped Phase 2 memory
 
 - **Named:** the product is now **Karvix** (was the placeholder "Voice Agent").

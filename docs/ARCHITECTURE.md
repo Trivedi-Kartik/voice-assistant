@@ -39,6 +39,26 @@ OS command for each tool is hardcoded in `agent/src/main/tools/`.
   `server/src/tools/toolNames.ts` — both packages assert their local registry
   matches on startup).
 
+### App control: `open_app` / `close_app`
+
+Both read from one whitelist, `agent/src/main/tools/appRegistry.ts` — an app
+name maps to an `openCommand` (`start`) and, optionally, a `processName`
+(`taskkill /IM ... /F`). An app with no `processName` is **open-only**: File
+Explorer, Settings, and Control Panel are deliberately excluded from
+`close_app` because force-closing them (`explorer.exe` especially) takes down
+the whole taskbar/desktop shell, not just one window — this isn't a gap to fill
+in later, it's a permanent exclusion.
+
+`close_app` is the first tool marked `sensitivity: "high"` in
+`ToolDefinition` (`agent/src/main/tools/types.ts`) — that field existed inert
+in v1 anticipating exactly this. `dispatchToolCall`
+(`agent/src/main/tools/index.ts`) now has a real consumer for it: before
+`execute()` runs on any high-sensitivity tool, it blocks on an Allow/Deny
+`dialog.showMessageBox` (message from the tool's optional `describe(args)`,
+e.g. "Close Chrome?"). A denied or dismissed dialog returns a normal
+`{ ok: false }` result without touching the OS. `open_app` stays `"low"` —
+no dialog, same as v1.
+
 ## Auth flow (email/password, JWT + refresh)
 
 1. Client generates/persists a `deviceId` locally.
@@ -110,7 +130,7 @@ Groq's API rejects the whole completion with a 400 `tool_use_failed` error. This
 is generation-quality noise, not a deterministic bug in this codebase: identical
 requests succeed on a retry most of the time, and it happens more often on
 compound requests ("open X and search Y") than single-action ones.
-`server/src/llm.ts` retries automatically (up to 4 attempts) when it detects this
+`server/src/llm.ts` retries automatically (up to 6 attempts) when it detects this
 specific error, which measurably improves reliability but does not eliminate it
 — in testing, roughly an 80% single-attempt-success rate on the hardest compound
 case became ~80-90%+ with retries, not 100%. If a turn still fails after

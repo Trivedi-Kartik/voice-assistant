@@ -17,7 +17,7 @@ export function ConsentScreen({ onAccept }: { onAccept: () => void }) {
       <h1>Before you start</h1>
       <ul>
         <li>When you press the hotkey and speak, your audio is sent to our server and processed via Groq to transcribe and understand it.</li>
-        <li>This app can take real actions on your computer on your behalf — opening apps, running web searches, and opening URLs — only from a fixed, safe list your assistant is allowed to use.</li>
+        <li>This app can take real actions on your computer on your behalf — opening and closing apps, running web searches, and opening URLs — only from a fixed, safe list your assistant is allowed to use. Closing an app always asks you to confirm first.</li>
         <li>This is an early beta. Things may break, and the assistant may occasionally misunderstand you.</li>
       </ul>
       <button onClick={accept} disabled={accepting}>

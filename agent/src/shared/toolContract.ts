@@ -3,6 +3,6 @@
 // (server/src/tools/schemas.ts) must match this list exactly — a one-line test on
 // each side asserts that, as cheap insurance against silent drift.
 
-export const TOOL_NAMES = ["open_app", "web_search", "open_url"] as const;
+export const TOOL_NAMES = ["open_app", "close_app", "web_search", "open_url"] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
