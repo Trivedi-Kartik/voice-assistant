@@ -109,7 +109,13 @@ export async function runLlmStep(
 
 function safeParseArgs(raw: string): unknown {
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Zero-arg tools (read_clipboard, take_screenshot_and_describe) expect
+    // {} — but the model sometimes emits literal "null" for "no arguments",
+    // which JSON.parse accepts without throwing, so the catch below never
+    // fires. Confirmed via real testing: this reached the client as a
+    // literal `null` and failed zod's z.object({}).parse(null) downstream.
+    return parsed !== null && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
