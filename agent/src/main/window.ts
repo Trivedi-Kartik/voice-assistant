@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
 import path from "node:path";
 
 // Secure by construction: contextIsolation + sandbox on, nodeIntegration off. The
@@ -19,9 +19,11 @@ export function createMainWindow(): BrowserWindow {
     },
   });
 
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
-  if (devServerUrl) {
-    win.loadURL(devServerUrl);
+  // app.isPackaged is Electron's own dev/prod signal — more robust across
+  // platforms (esp. Windows) than relying on an env var surviving through a
+  // launcher script. Port must match vite.config.ts's server.port.
+  if (!app.isPackaged) {
+    win.loadURL("http://localhost:5173");
   } else {
     win.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
