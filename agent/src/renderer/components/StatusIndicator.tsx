@@ -1,4 +1,4 @@
-import type { MicState, UiStatus } from "../state/store";
+import type { UiStatus } from "../state/store";
 
 const CONNECTION_LABEL: Record<UiStatus, string> = {
   idle: "Not connected",
@@ -8,23 +8,16 @@ const CONNECTION_LABEL: Record<UiStatus, string> = {
   error: "Connection lost",
 };
 
-const MIC_LABEL: Record<MicState, string> = {
-  idle: "Press Ctrl+Shift+Space to talk",
-  listening: "Listening…",
-  thinking: "Thinking…",
-  speaking: "Speaking…",
-};
-
-// One small, finite set of states — deliberately not scattered ad hoc console
-// logging, since a real product needs the user to always understand why nothing
-// is happening. See docs/ARCHITECTURE.md "Failure modes".
+// Connection state only — mic state is now shown by the VoiceOrb, which is the
+// actual focal point of the screen. One small, finite set of states —
+// deliberately not scattered ad hoc console logging, since a real product needs
+// the user to always understand why nothing is happening. See
+// docs/ARCHITECTURE.md "Failure modes".
 export function StatusIndicator({
   connectionStatus,
-  micState,
   onRetry,
 }: {
   connectionStatus: UiStatus;
-  micState: MicState;
   onRetry: () => void;
 }) {
   return (
@@ -36,7 +29,6 @@ export function StatusIndicator({
           Retry connection
         </button>
       )}
-      {connectionStatus === "connected" && <span className="mic-state"> · {MIC_LABEL[micState]}</span>}
     </div>
   );
 }
