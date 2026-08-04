@@ -1,4 +1,4 @@
-# Voice Agent — Multi-Tenant Personal Assistant
+# Karvix — Multi-Tenant Personal Assistant
 
 A real, shippable voice assistant — talk to it, it talks back, and it can actually
 control your machine (open apps, search the web) via a strict, whitelisted tool
@@ -40,7 +40,7 @@ comes back to you.
 ## Project layout
 
 ```
-voice-agent/
+karvix/
 ├── docs/                 ← architecture, setup, changelog (this file)
 ├── ROADMAP.md            ← what's next, ordered by value
 ├── server/               ← the "brain" — multi-tenant Node/TS backend

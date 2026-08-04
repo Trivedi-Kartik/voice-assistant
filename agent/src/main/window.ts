@@ -10,7 +10,7 @@ export function createMainWindow(): BrowserWindow {
     height: 760,
     minWidth: 380,
     minHeight: 560,
-    title: "Voice Agent",
+    title: "Karvix",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,

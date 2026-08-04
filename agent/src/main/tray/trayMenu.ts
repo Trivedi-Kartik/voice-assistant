@@ -3,7 +3,7 @@ import path from "node:path";
 
 export function createTray(win: BrowserWindow, onLogout: () => void): Tray {
   const tray = new Tray(path.join(__dirname, "../../build/icon.png"));
-  tray.setToolTip("Voice Agent");
+  tray.setToolTip("Karvix");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Show", click: () => win.show() },
