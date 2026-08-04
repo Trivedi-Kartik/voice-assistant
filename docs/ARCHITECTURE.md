@@ -110,6 +110,42 @@ warrant asking first. Content is truncated to 4,000 characters
 (`agent/src/main/tools/readClipboard.ts`) so a large copied document doesn't
 blow up conversation token usage.
 
+### `take_screenshot_and_describe`
+
+The most privacy-sensitive tool yet — `sensitivity: "high"`, same Allow/Deny
+gate, but here it's about an actual image leaving the device, not text.
+
+**The image never touches `ToolInvocation`, deliberately.** Every other
+client tool's `ToolResult` flows back over the WS `tool_call`/`tool_result`
+protocol and gets persisted verbatim into the `ToolInvocation` audit table
+(`ws/session.ts`'s `dispatchToolCall`). A full screen capture (passwords,
+private messages, anything visible) durably stored in Postgres forever would
+be a real problem, so this tool takes a different path entirely: the client
+captures the screenshot and posts it directly to a dedicated
+`POST /vision/describe` endpoint (`server/src/vision/routes.ts`,
+`requireAuth`-protected) via a new `authManager.describeScreenshot()` method
+— never through the WS protocol. The server calls Groq's vision model
+(`server/src/vision.ts`, currently `llama-3.2-11b-vision-preview` — a single
+named constant, since Groq's "preview" labeling means it may get
+renamed/replaced) and returns only the resulting **text** description. That
+text is the only thing that ever becomes this tool's `ToolResult` and
+re-enters the normal flow — the image itself exists only in that one HTTPS
+request body and briefly in server memory for one Groq call.
+
+Two supporting details:
+- `server/src/index.ts`'s body-size limit is now scoped per-router
+  (`/auth` keeps the small express default, `/vision` gets 25MB) rather than
+  raised globally — a base64 screenshot needs real headroom, but every other
+  route shouldn't get a looser limit as a side effect.
+- `/vision/describe` calls the same `checkAndConsumeTurn` the WS turn loop
+  uses, even though it's a plain REST endpoint outside that loop — otherwise
+  an authenticated client could hit it directly and unbounded, burning
+  through the shared Groq key's quota for free.
+
+**v1 scope:** primary display only, not all monitors — multiple images per
+call multiplies cost, and "describe my screen" is ambiguous with several
+monitors anyway.
+
 ## Auth flow (email/password, JWT + refresh)
 
 1. Client generates/persists a `deviceId` locally.

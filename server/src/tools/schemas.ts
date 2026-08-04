@@ -135,6 +135,20 @@ export const GROQ_TOOL_SCHEMAS: ToolSchema[] = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "take_screenshot_and_describe",
+      description:
+        "Take a screenshot of the user's primary screen and describe what's on it. Always asks the user to " +
+        "confirm first, since this shares whatever is currently visible on their screen.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
 ];
 
 // Server-handled tools (Phase 2) — these never round-trip to the client at all,

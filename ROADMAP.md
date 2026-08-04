@@ -71,17 +71,26 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   (privacy, not destructiveness — see `docs/ARCHITECTURE.md`). Truncated to
   4,000 characters.
 
+### ✅ Increment 4 — `take_screenshot_and_describe` (this build)
+- New tool — captures the primary display, sends it to a dedicated
+  `POST /vision/describe` endpoint (`server/src/vision/`), which calls
+  Groq's `llama-3.2-11b-vision-preview` and returns a text description. The
+  image deliberately never enters the WS `tool_call` protocol or the
+  `ToolInvocation` audit table — only the resulting text does. Third
+  `sensitivity: "high"` tool (the most privacy-sensitive one yet). See
+  `docs/ARCHITECTURE.md` "take_screenshot_and_describe" for the full design,
+  including why `/vision`'s Express body-size limit had to be scoped
+  per-router rather than raised globally, and why it reuses the same
+  daily-turn rate limit the WS loop uses.
+- Primary display only, not every monitor — documented v1 limitation, not
+  an oversight.
+
 ### Next
-- `take_screenshot_and_describe` — deliberately **not** bundled with
-  `read_clipboard` despite both being "moderate" tier: it needs a
-  vision-capable model (today's tool-calling model is text-only), a way to
-  move image data through a protocol that's text-only today, and its own
-  consent treatment — real architecture work, not a same-shape addition like
-  every tool so far. Needs its own planning pass.
 - `send_email_draft` — blocked on external setup, not just code: needs a
-  Google Cloud OAuth client (ID/secret) the user has to create themselves,
-  plus its own mini privacy review before shipping, per this file's own
-  original framing.
+  Google Cloud OAuth client (ID/secret) the user has to create themselves
+  (setup steps already given), plus its own mini privacy review before
+  shipping, per this file's own original framing. Drafts only, never sends —
+  that's the point of the name.
 - Each new tool still follows the strict-whitelist rule from `docs/ARCHITECTURE.md`,
   ships as its own reviewed increment (not a single "Phase 3 dump"), and gets
   a matching entry in `docs/CAPABILITIES.md` so users know it exists.
