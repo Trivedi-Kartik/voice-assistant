@@ -1,5 +1,7 @@
+import { BrowserWindow, dialog } from "electron";
 import type { ToolDefinition, ToolResult } from "./types.js";
 import { openAppTool } from "./openApp.js";
+import { closeAppTool } from "./closeApp.js";
 import { webSearchTool } from "./webSearch.js";
 import { openUrlTool } from "./openUrl.js";
 import { TOOL_NAMES } from "../../shared/toolContract.js";
@@ -9,6 +11,7 @@ import { TOOL_NAMES } from "../../shared/toolContract.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const REGISTRY: Record<string, ToolDefinition<any>> = {
   [openAppTool.name]: openAppTool,
+  [closeAppTool.name]: closeAppTool,
   [webSearchTool.name]: webSearchTool,
   [openUrlTool.name]: openUrlTool,
 };
@@ -37,6 +40,9 @@ export async function dispatchToolCall(name: string, rawArgs: unknown): Promise<
 
   try {
     const args = tool.parseArgs(rawArgs);
+    if (tool.sensitivity === "high" && !(await confirmHighSensitivity(tool, args))) {
+      return { ok: false, message: "The user didn't approve this action." };
+    }
     return await Promise.race([
       tool.execute(args),
       new Promise<ToolResult>((resolve) =>
@@ -49,4 +55,15 @@ export async function dispatchToolCall(name: string, rawArgs: unknown): Promise<
       message: err instanceof Error ? err.message : "Tool failed with an unexpected error.",
     };
   }
+}
+
+// Blocking Allow/Deny gate for 'high' sensitivity tools (first: close_app) —
+// runs before execute() so a denied/dismissed dialog never touches the OS.
+// See docs/ARCHITECTURE.md.
+async function confirmHighSensitivity(tool: ToolDefinition<unknown>, args: unknown): Promise<boolean> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const message = tool.describe?.(args) ?? `Allow "${tool.name}"?`;
+  const options = { type: "question" as const, buttons: ["Allow", "Deny"], defaultId: 1, cancelId: 1, message };
+  const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+  return response === 0;
 }

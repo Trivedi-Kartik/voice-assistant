@@ -29,7 +29,27 @@ export const GROQ_TOOL_SCHEMAS: ToolSchema[] = [
       parameters: {
         type: "object",
         properties: {
-          app: { type: "string", description: "The app name, e.g. 'chrome', 'notepad', 'spotify'." },
+          app: {
+            type: "string",
+            description: "The app name, e.g. 'chrome', 'camera', 'file explorer', 'spotify', 'task manager'.",
+          },
+        },
+        required: ["app"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "close_app",
+      description:
+        "Close a running whitelisted desktop application by name. Not every app that can be opened can be " +
+        "closed this way (e.g. File Explorer never can, since force-closing it takes down the whole desktop) " +
+        "— the tool result will say so if it can't.",
+      parameters: {
+        type: "object",
+        properties: {
+          app: { type: "string", description: "The app name, e.g. 'chrome', 'spotify', 'task manager'." },
         },
         required: ["app"],
       },

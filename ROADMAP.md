@@ -35,7 +35,26 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   disruptive in practice (e.g. a different tool-calling model).
 
 ## Phase 3 — More tools, incrementally
-- Low-risk first: `set_reminder`, `control_media` (play/pause/volume).
+
+### ✅ Increment 1 — App control expansion (this build)
+- `open_app` widened from a handful of browsers/editors to a curated whitelist
+  covering browsers, editors, Office, media, communication apps (WhatsApp,
+  Teams, Slack, Discord, Zoom), and system utilities (camera, file explorer,
+  task manager, paint, settings, control panel, terminal, PowerShell) — see
+  `agent/src/main/tools/appRegistry.ts`, the new single source of truth for
+  both `open_app` and `close_app`.
+- New `close_app` tool — the first tool that can involuntarily kill a running
+  program. File Explorer/Settings/Control Panel are permanently open-only
+  (force-closing `explorer.exe` takes down the whole shell). This is also the
+  first real use of the `sensitivity: "high"` field: every `close_app` call
+  goes through an Allow/Deny confirmation dialog before it runs. See
+  `docs/ARCHITECTURE.md` "App control."
+- Exact `start`/`taskkill` names for less common apps are best-effort pending
+  a pass on a real Windows machine (this dev environment is Linux) — apps not
+  actually installed/running already fail gracefully either way.
+
+### Next
+- Low-risk: `set_reminder`, `control_media` (play/pause/volume).
 - Then moderate: `read_clipboard`, `take_screenshot_and_describe`.
 - Higher-risk last, each with its own mini privacy review before shipping:
   `send_email_draft` (Gmail API, OAuth, careful scoping).
