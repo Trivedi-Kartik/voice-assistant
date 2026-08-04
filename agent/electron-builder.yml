@@ -1,0 +1,19 @@
+appId: co.dyrect.voiceagent
+productName: Voice Agent
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+win:
+  target: nsis
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallDirectory: true
+  createDesktopShortcut: true
+publish:
+  provider: github
+  owner: your-github-org
+  repo: voice-agent

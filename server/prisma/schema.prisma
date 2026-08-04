@@ -1,0 +1,102 @@
+// Durable, relational data only. Conversation transcripts are intentionally NOT modeled
+// here in v1 — they live ephemerally in Redis (short TTL, cleared on disconnect) to avoid
+// taking on a data-retention/privacy obligation before the core loop is validated.
+// See docs/ARCHITECTURE.md for the full reasoning.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+  displayName     String?  @map("display_name")
+  plan            String   @default("free") // 'free' | 'pro' (pro unused until billing exists)
+  groqApiKeyEnc   Bytes?   @map("groq_api_key_enc") // AES-256-GCM ciphertext of user's own Groq key (BYOK)
+  invitedAt       DateTime @default(now()) @map("invited_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  devices        Device[]
+  refreshTokens  RefreshToken[]
+  usageEvents    UsageEvent[]
+  toolInvocations ToolInvocation[]
+
+  @@map("users")
+}
+
+model Device {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceName   String    @map("device_name")
+  platform     String    // 'windows' | 'mac' | 'linux' | 'android' | 'ios'
+  capabilities Json      @default("[]") // tool names this device's client actually implements
+  lastSeenAt   DateTime  @default(now()) @map("last_seen_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  refreshTokens   RefreshToken[]
+  toolInvocations ToolInvocation[]
+
+  @@map("devices")
+}
+
+model RefreshToken {
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId      String        @map("device_id")
+  device        Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  tokenHash     String        @map("token_hash") // sha256 of the raw token — raw token never stored
+  replacedById  String?       @unique @map("replaced_by_id")
+  replacedBy    RefreshToken? @relation("TokenChain", fields: [replacedById], references: [id])
+  replacedFrom  RefreshToken? @relation("TokenChain")
+  expiresAt     DateTime      @map("expires_at")
+  revokedAt     DateTime?     @map("revoked_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+// Per-user/day usage counters — backs the shared-key daily cap (lifted once BYOK is set).
+model UsageEvent {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day            DateTime @db.Date
+  groqSttSeconds Int      @default(0) @map("groq_stt_seconds")
+  groqTokensIn   Int      @default(0) @map("groq_llm_tokens_in")
+  groqTokensOut  Int      @default(0) @map("groq_llm_tokens_out")
+  turnCount      Int      @default(0) @map("turn_count")
+
+  @@unique([userId, day])
+  @@map("usage_events")
+}
+
+// Audit trail of real OS actions taken on a user's machine — deliberately does NOT
+// include conversation transcript content, only the structured tool call/result.
+model ToolInvocation {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId    String    @map("device_id")
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  toolName    String    @map("tool_name")
+  args        Json
+  result      Json?
+  status      String    @default("pending") // 'pending' | 'success' | 'error' | 'timeout'
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  @@index([userId, createdAt])
+  @@map("tool_invocations")
+}
