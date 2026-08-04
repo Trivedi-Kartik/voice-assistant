@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <!-- CSP is set from the main process (see main/csp.ts) so dev and packaged
+         builds can differ — Vite's dev client needs a more permissive policy
+         than the packaged app should ever get. -->
     <title>Voice Agent</title>
   </head>
   <body>
