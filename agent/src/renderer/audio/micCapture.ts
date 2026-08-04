@@ -5,6 +5,15 @@
 export class MicCapture {
   private mediaRecorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
+  // Chains each chunk's async base64-encode-then-send onto the previous one. This
+  // is load-bearing, not cosmetic: ondataavailable's handler being `async` does
+  // NOT make the browser wait for it before firing later events — `onstop` fires
+  // as soon as the event is dispatched, regardless of whether that chunk's
+  // encoding/IPC-send has actually finished. Without this chain, audio_end could
+  // reach the server before (or interleaved with) earlier chunks, corrupting the
+  // WebM file the server hands to Whisper. This was a real, confirmed bug:
+  // intermittent Groq "could not process file" errors, worse on short recordings.
+  private sendChain: Promise<void> = Promise.resolve();
 
   async start(onPermissionDenied: () => void): Promise<void> {
     try {
@@ -17,12 +26,15 @@ export class MicCapture {
       throw err;
     }
 
+    this.sendChain = Promise.resolve();
     const recorder = new MediaRecorder(this.stream, { mimeType: "audio/webm;codecs=opus" });
     this.mediaRecorder = recorder;
 
-    recorder.ondataavailable = async (event) => {
+    recorder.ondataavailable = (event) => {
       if (event.data.size === 0) return;
-      window.jarvis.audio.sendChunk(await blobToBase64(event.data));
+      this.sendChain = this.sendChain
+        .then(() => blobToBase64(event.data))
+        .then((base64) => window.jarvis.audio.sendChunk(base64));
     };
 
     recorder.start(250);
@@ -30,10 +42,10 @@ export class MicCapture {
 
   stop(): void {
     if (!this.mediaRecorder || this.mediaRecorder.state === "inactive") return;
-    // onstop fires strictly after the final ondataavailable, so audio_end is
-    // guaranteed to reach the server after every chunk has been sent.
     this.mediaRecorder.onstop = () => {
-      window.jarvis.audio.sendEnd();
+      // Wait for every queued chunk to actually finish sending, IN ORDER, before
+      // telling the server the utterance is complete.
+      this.sendChain.then(() => window.jarvis.audio.sendEnd());
       this.stream?.getTracks().forEach((track) => track.stop());
       this.stream = null;
     };
