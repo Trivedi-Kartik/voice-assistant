@@ -88,6 +88,7 @@ best pizza in Ahmedabad."*
 
 ## Full docs
 
+- [`docs/CAPABILITIES.md`](CAPABILITIES.md) — what Karvix can actually do right now, in plain language
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — auth, data model, session isolation, security rules
 - [`docs/SETUP.md`](SETUP.md) — detailed setup, troubleshooting, packaging
 - [`ROADMAP.md`](../ROADMAP.md) — what's next (memory, more tools, wake-word, mobile)

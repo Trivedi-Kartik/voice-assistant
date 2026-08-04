@@ -10,7 +10,7 @@ export interface ToolSchema {
     description: string;
     parameters: {
       type: "object";
-      properties: Record<string, { type: string; description: string }>;
+      properties: Record<string, { type: string; description: string; enum?: string[] }>;
       required: string[];
     };
   };
@@ -80,6 +80,58 @@ export const GROQ_TOOL_SCHEMAS: ToolSchema[] = [
           url: { type: "string", description: "A fully-qualified http(s) URL." },
         },
         required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "control_media",
+      description: "Control whatever media is currently playing on the user's machine (works regardless of which app has focus).",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            description: "The media control action to perform.",
+            enum: ["play_pause", "next", "previous", "stop", "volume_up", "volume_down", "mute"],
+          },
+        },
+        required: ["action"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "set_reminder",
+      description:
+        "Set a reminder that fires after a relative delay (not an absolute time-of-day — always ask 'in how many " +
+        "minutes/hours' if the user gives a time like '6pm' rather than a duration).",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "What to remind the user about." },
+          delayMinutes: {
+            type: "integer",
+            description: "How many minutes from now to fire the reminder (1 to 10080, i.e. up to 7 days).",
+          },
+        },
+        required: ["text", "delayMinutes"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "read_clipboard",
+      description:
+        "Read the user's current clipboard contents so you can act on or discuss them. This always asks the " +
+        "user to confirm first, since clipboard contents can be sensitive.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
       },
     },
   },

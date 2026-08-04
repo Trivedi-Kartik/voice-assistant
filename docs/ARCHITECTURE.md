@@ -59,6 +59,57 @@ e.g. "Close Chrome?"). A denied or dismissed dialog returns a normal
 `{ ok: false }` result without touching the OS. `open_app` stays `"low"` —
 no dialog, same as v1.
 
+### `control_media`
+
+Simulates OS media-key presses (play/pause, next/prev, volume, mute) via
+`user32.dll`'s `keybd_event`, invoked through a fixed PowerShell `-Command`
+(`agent/src/main/tools/controlMedia.ts`) — the global, hardware-key-equivalent
+mechanism, so it works regardless of which app has focus. Deliberately not a
+native Node addon (e.g. `robotjs`): a prebuilt native binding
+(`onnxruntime-node`, used for memory embeddings) already failed to load on a
+real Windows machine for an unrelated feature, and PowerShell + `user32.dll`
+ship with every Windows install, no extra dependency to get wrong. The only
+variable substituted into the script string is a virtual-key integer, always
+one of 7 fixed values resolved from an enum — never LLM/user-supplied text,
+same "fixed argv, no interpolated arbitrary strings" rule as every other tool.
+
+### `set_reminder`
+
+Client-local by design, not server-backed: reminders are stored on-device
+(`agent/src/main/reminders/reminderStore.ts`, `electron-store`, same pattern
+as `consent.ts`/`deviceId.ts`) and fired by an in-process interval
+(`reminderScheduler.ts`) via Electron's native `Notification` API. The server
+never learns reminder content beyond the usual `ToolInvocation` audit log
+written for every client-dispatched tool call.
+
+This was a deliberate scope call, not an oversight: a server-backed version
+would need a new Postgres table, the first background poller in this
+codebase, and the first userId→live-connection registry (today the server
+only ever responds to a message on the same connection, never initiates) —
+that's front-loading Phase 6's task-queue work into what the roadmap calls a
+"low-risk" increment. Revisit if multi-device sync or app-not-running
+delivery becomes a real user complaint.
+
+**Known limitations, by design:** only fires if the Electron app is running
+(tray counts) at fire time — fully quitting the app or shutting down the PC
+loses it, same as any local alarm app. An overdue reminder still fires
+immediately on next launch (catch-up), so it's delayed, not silently dropped.
+No cross-device sync. Time parsing is relative-delay-only (`delayMinutes`,
+not "at 6pm") — nothing here tells the model the user's timezone yet, so an
+absolute time risks firing at the wrong local hour.
+
+### `read_clipboard`
+
+The second `sensitivity: "high"` tool, for a different reason than
+`close_app`: this isn't about irreversible damage, it's about not silently
+shipping potentially private clipboard content (passwords, OTPs, anything)
+to a cloud LLM without the user seeing it happen. Same Allow/Deny
+confirmation gate either way — `sensitivity` doesn't distinguish "risky
+because destructive" from "risky because private," and doesn't need to; both
+warrant asking first. Content is truncated to 4,000 characters
+(`agent/src/main/tools/readClipboard.ts`) so a large copied document doesn't
+blow up conversation token usage.
+
 ## Auth flow (email/password, JWT + refresh)
 
 1. Client generates/persists a `deviceId` locally.

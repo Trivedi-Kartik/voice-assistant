@@ -4,6 +4,52 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-04 — Phase 3 increment 3: `read_clipboard`, plus a user-facing capabilities doc
+
+- **New tool: `read_clipboard`.** Reads clipboard text via Electron's built-in
+  `clipboard` module (no new dependency), truncated to 4,000 characters. The
+  second `sensitivity: "high"` tool — gated by the existing Allow/Deny
+  confirmation dialog, but for privacy (clipboard can hold passwords/OTPs),
+  not destructiveness like `close_app`. Wired through the usual four sync
+  points; consent screen copy generalized to cover both "risky" and
+  "privacy-sensitive" confirm-first actions instead of only mentioning
+  `close_app`.
+- **New:** `docs/CAPABILITIES.md` — a living, plain-language summary of what
+  Karvix can actually do today (as opposed to `ROADMAP.md`'s "what's next" or
+  this file's dated history). Linked from `docs/README.md`. `ROADMAP.md`'s
+  Phase 3 checklist now calls for updating it on every new tool.
+- **Deliberately not built this pass:** `take_screenshot_and_describe`
+  (needs a vision model + image transport + its own consent treatment — real
+  architecture work) and `send_email_draft` (blocked on the user creating a
+  Google Cloud OAuth client first, plus its own privacy review). Both need
+  their own planning pass, not a rushed bundle with `read_clipboard`.
+
+## 2026-08-04 — Phase 3 increment 2: `control_media` + `set_reminder`
+
+- **New tool: `control_media`.** Play/pause, next/prev, volume, mute —
+  simulated via `user32.dll`'s `keybd_event` (global, same as a physical
+  multimedia key) through a fixed PowerShell `-Command`, not a native Node
+  addon. Deliberately avoids repeating the `onnxruntime-node` prebuilt-binary
+  pain from the memory feature.
+- **New tool: `set_reminder`.** Relative-delay only (`delayMinutes`, e.g. "in
+  10 minutes") — no timezone plumbing yet, so absolute times like "at 6pm"
+  aren't supported this increment. Deliberately **client-local**: stored via
+  `electron-store` (`agent/src/main/reminders/reminderStore.ts`) and fired by
+  an in-process interval through Electron's native `Notification` API
+  (`reminderScheduler.ts`) — no new Postgres table, no background poller or
+  connection registry on the server. Overdue reminders catch up on next
+  launch instead of being lost; known limitation is it only fires if the app
+  is running at the time, and there's no cross-device sync yet.
+- Wired both through the same four sync points as every prior tool (server
+  `toolNames.ts`/`schemas.ts`, agent `toolContract.ts`/`deviceCapabilities.ts`).
+- `ToolSchema.parameters.properties` gained an optional `enum` field (used by
+  `control_media`'s `action` param) — a stricter JSON schema than a
+  free-text description, which should reduce malformed tool-call generations
+  for this tool specifically (see the ongoing `tool_use_failed` reliability
+  note in `docs/ARCHITECTURE.md`).
+- **Not yet verified:** real PowerShell execution and `Notification` behavior
+  — this dev environment is Linux, needs a pass on the user's Windows machine.
+
 ## 2026-08-04 — Phase 3 increment 1: app control expansion (open + close)
 
 - **`open_app` whitelist widened:** from 6 browser/editor entries to a curated

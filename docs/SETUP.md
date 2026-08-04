@@ -89,6 +89,8 @@ Then point the packaged client's `.env` (`SERVER_WS_URL`/`SERVER_HTTP_URL`) at y
 | No sound on reply | Check Windows isn't blocking audio permissions/output device for Electron. |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (the app also surfaces a direct link to this when it detects the mic is blocked). |
 | `[session] findRelevantMemories failed` with `ERR_DLOPEN_FAILED` on `onnxruntime_binding.node` | `onnxruntime-node`'s native addon is missing a dependency DLL — almost always the Microsoft Visual C++ Redistributable (x64) isn't installed. Install it, restart your terminal, and if it still fails do a clean `server/node_modules` reinstall (antivirus sometimes strips files post-install). Non-fatal either way — the voice/tool loop keeps working, only memory recall is degraded until fixed (see `server/src/memory/embeddings.ts`). |
+| "Play/pause/volume" does nothing | `control_media` shells out to `powershell.exe -Command`. If Group Policy blocks inline `-Command` execution (rare, usually only on locked-down corporate machines), it'll fail silently to the user as "Couldn't control media playback." Check `agent/src/main/tools/controlMedia.ts`'s script runs manually in a PowerShell prompt. |
+| Reminder never showed | `set_reminder` is client-local (see `docs/ARCHITECTURE.md`) — it only fires if the Electron app was running (tray counts) at the time. Also check Windows Settings → System → Notifications hasn't blocked notifications for the app; without that permission, `Notification.isSupported()`/`.show()` won't visibly alert you even though the reminder still gets marked fired. |
 
 ## Adding a new app to the whitelist
 

@@ -11,6 +11,7 @@ import { authManager } from "./auth/authManager.js";
 import { Connection, type ConnectionStatus } from "./ws/connection.js";
 import { HotkeyTriggerSource } from "./hotkey/hotkeyTriggerSource.js";
 import { dispatchToolCall } from "./tools/index.js";
+import { startReminderScheduler } from "./reminders/reminderScheduler.js";
 import { registerIpcHandlers } from "./ipc/ipcHandlers.js";
 import { createMainWindow } from "./window.js";
 import { createTray } from "./tray/trayMenu.js";
@@ -71,6 +72,7 @@ function afterLogout(): void {
 app.whenReady().then(async () => {
   applyContentSecurityPolicy(!app.isPackaged);
   win = createMainWindow();
+  startReminderScheduler();
 
   registerIpcHandlers({
     win,
