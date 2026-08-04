@@ -1,14 +1,17 @@
 import type { WebSocket } from "ws";
 import { v4 as uuid } from "uuid";
+import { z } from "zod";
 import type { ClientMessage, ServerMessage, ToolResult } from "../protocol.js";
-import { runLlmStep, type ChatMessage } from "../llm.js";
+import { runLlmStep, isRetryableToolUseFailure, type ChatMessage } from "../llm.js";
 import { transcribeAudio } from "../stt.js";
-import { toolSchemasForCapabilities } from "../tools/schemas.js";
+import { toolSchemasForCapabilities, SERVER_TOOL_SCHEMAS, SERVER_TOOL_NAMES } from "../tools/schemas.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
 import { redis, conversationKey, CONVERSATION_TTL_SECONDS } from "../redis.js";
 import { db } from "../db.js";
 import { tryAcquireUserLock, releaseUserLock } from "./userLock.js";
+import { createConversation, appendMessage } from "../memory/conversationStore.js";
+import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../memory/memoryStore.js";
 
 // Explicit about never verbalizing tool/function mechanics: without this, models
 // occasionally narrate their own tool usage in plain-text form (e.g. literally
@@ -34,6 +37,16 @@ function sanitizeAssistantText(text: string): string {
   cleaned = cleaned.replace(/\b(open_app|web_search|open_url)\s*\([^)]*\)/gi, "").trim();
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
   return cleaned.length > 0 ? cleaned : "Done.";
+}
+
+// Phase 2: relevant memories (semantic search over this user's remembered
+// preferences, see memory/memoryStore.ts) get folded into the system prompt
+// each turn — the model doesn't need to explicitly "call" a recall tool, the
+// context is just already there, same shape as a typical RAG setup.
+function buildSystemPrompt(memories: RelevantMemory[]): string {
+  if (memories.length === 0) return SYSTEM_PROMPT;
+  const facts = memories.map((m) => `- ${m.factText}`).join("\n");
+  return `${SYSTEM_PROMPT}\n\nThings you know about this user from past conversations:\n${facts}`;
 }
 
 const TOOL_TIMEOUT_MS = 12_000;
@@ -77,6 +90,12 @@ export class Session {
     if (resumeConversationId) {
       const raw = await redis.get(conversationKey(userId, resumeConversationId));
       if (raw) session.history = JSON.parse(raw) as ChatMessage[];
+    } else {
+      // Durable record (Phase 2) — best-effort: a hiccup here shouldn't block
+      // the core voice loop, which worked fine before this feature existed.
+      await createConversation(session.conversationId, userId, deviceId).catch((err) =>
+        console.error("[session] createConversation failed", err)
+      );
     }
     return session;
   }
@@ -163,19 +182,37 @@ export class Session {
       this.send({ type: "transcript", text: transcript });
       this.history.push({ role: "user", content: transcript });
 
-      const tools = toolSchemasForCapabilities(this.capabilities);
+      // Durable persistence (Phase 2) — best-effort, never blocks the turn.
+      const userMessageId = await appendMessage(this.conversationId, "user", transcript).catch((err) => {
+        console.error("[session] appendMessage(user) failed", err);
+        return undefined;
+      });
+
+      const relevantMemories = await findRelevantMemories(this.userId, transcript).catch((err) => {
+        console.error("[session] findRelevantMemories failed", err);
+        return [] as RelevantMemory[];
+      });
+      this.history[0] = { role: "system", content: buildSystemPrompt(relevantMemories) };
+
+      const tools = [...toolSchemasForCapabilities(this.capabilities), ...SERVER_TOOL_SCHEMAS];
 
       for (let step = 0; step < MAX_TOOL_LOOP_STEPS; step++) {
         const { assistantMessage, toolCalls } = await runLlmStep(apiKey, this.history, tools);
         this.history.push(assistantMessage);
 
         if (toolCalls.length === 0) {
-          this.send({ type: "assistant_text", text: sanitizeAssistantText(assistantMessage.content) });
+          const finalText = sanitizeAssistantText(assistantMessage.content);
+          this.send({ type: "assistant_text", text: finalText });
+          await appendMessage(this.conversationId, "assistant", finalText).catch((err) =>
+            console.error("[session] appendMessage(assistant) failed", err)
+          );
           break;
         }
 
         for (const call of toolCalls) {
-          const result = await this.dispatchToolCall(call.id, call.name, call.args);
+          const result = SERVER_TOOL_NAMES.has(call.name)
+            ? await this.handleServerTool(call.name, call.args, userMessageId)
+            : await this.dispatchToolCall(call.id, call.name, call.args);
           this.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
         }
       }
@@ -183,11 +220,38 @@ export class Session {
       await this.persist();
       recordUsage(this.userId, {}).catch(() => {});
     } catch (err) {
-      this.send({ type: "error", code: "llm_failed", message: "Something went wrong processing that — try again." });
+      // isRetryableToolUseFailure catches the exhausted-retries case too (see
+      // llm.ts) — Groq's Llama 3.3 occasionally can't produce a clean tool call
+      // for compound requests ("open X and search Y") even after retrying.
+      // Known, expected occasional failure — give a more actionable message
+      // than the generic fallback.
+      const message = isRetryableToolUseFailure(err)
+        ? "I had trouble with that — try asking one thing at a time."
+        : "Something went wrong processing that — try again.";
+      this.send({ type: "error", code: "llm_failed", message });
       console.error("[session] turn failed", err);
     } finally {
       releaseUserLock(this.userId);
     }
+  }
+
+  // Server-handled tools (Phase 2) never round-trip to the client — they don't
+  // touch the user's OS, so there's no reason to pay a WebSocket round-trip or
+  // give the client anything to execute. Unlike dispatchToolCall, this resolves
+  // synchronously within the same turn.
+  private async handleServerTool(name: string, args: unknown, sourceMessageId?: string): Promise<ToolResult> {
+    if (name === "remember_preference") {
+      const parsed = z.object({ fact: z.string().min(3) }).safeParse(args);
+      if (!parsed.success) return { ok: false, message: "That didn't look like a fact I could save." };
+      try {
+        await saveMemoryFact(this.userId, parsed.data.fact, sourceMessageId);
+        return { ok: true, message: "Got it, I'll remember that." };
+      } catch (err) {
+        console.error("[session] saveMemoryFact failed", err);
+        return { ok: false, message: "Couldn't save that right now." };
+      }
+    }
+    return { ok: false, message: `Unknown server tool "${name}".` };
   }
 
   private dispatchToolCall(callId: string, name: string, args: unknown): Promise<ToolResult> {

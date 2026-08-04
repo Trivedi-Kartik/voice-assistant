@@ -4,6 +4,57 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-04 — Named the product, fixed real bugs from live testing, shipped Phase 2 memory
+
+- **Named:** the product is now **Karvix** (was the placeholder "Voice Agent").
+  Wired through `package.json` (both packages), `electron-builder`'s
+  appId/productName, window title, tray tooltip, HTML title, login screen. Also
+  fixed `electron-builder.yml`'s GitHub Releases publish config, which still had
+  placeholder owner/repo — auto-update would have pointed nowhere.
+- **Real bugs found and fixed from actually running this on Windows** (all
+  confirmed via live testing, not hypothetical):
+  - `npm run dev` never launched Electron at all — only started Vite + `tsc -w`.
+  - A CSP meant for the packaged app was blocking Vite's dev-mode inline script
+    (React Fast Refresh), causing a blank page in dev.
+  - Device tool capabilities were defined client-side but never actually sent to
+    the server — every device's capabilities stayed at the default `[]`, so the
+    LLM was never offered any tools at all, ever, silently.
+  - A race in `MicCapture`: `ondataavailable`'s handler being `async` doesn't
+    make the browser wait for it before firing `onstop` — `audio_end` could
+    reach the server before an earlier chunk finished sending, corrupting the
+    file Whisper received (`"could not process file"`).
+  - The model would sometimes verbalize a tool call as literal text (e.g.
+    `web_search(query: ...)`) instead of using the structured mechanism, and
+    that raw pseudo-code got spoken to the user. Tightened the system prompt and
+    added a sanitizer backstop.
+  - `agent/tsconfig.json` had no include/exclude, so editors resolved it (not
+    the per-target configs) for renderer files, merging Node and DOM globals
+    into one program and producing real-looking editor-only type errors. Fixed
+    via solution-style project references.
+  - Editor-visible bug, same root cause class: connection drops mid-turn never
+    reset `micState`, so the UI/mic button could get stuck indefinitely.
+- **UI:** replaced the flat text screen with an animated central orb (tried CSS
+  gradients first — still read as static; landed on a `<canvas>` particle ring,
+  continuous motion in every state including idle), a clickable mic button
+  (shares one `toggleMic()` with the hotkey so they can't disagree about
+  recording state), tool-activity chips in the conversation (previously
+  invisible), and auto-scroll to the latest message.
+- **Phase 2 shipped** (see `ROADMAP.md`, `docs/ARCHITECTURE.md` "Memory /
+  personalization"): durable conversation/message persistence, a
+  server-handled `remember_preference` tool backed by local embeddings
+  (`@xenova/transformers`) + Neon `pgvector`, and RAG-style memory retrieval
+  folded into the system prompt each turn. Verified end-to-end: real embedding
+  generation, real pgvector similarity search (correctly matched a relevant
+  fact, correctly returned nothing for an unrelated query), the real Groq model
+  actually choosing to call `remember_preference` for a durable-fact statement
+  and *not* over-triggering on a one-off request, and the schema migration
+  applied cleanly to the real Neon database.
+- **Found in the process, not previously known:** Groq's Llama 3.3 has a real,
+  non-trivial tool-call generation failure rate (confirmed via repeated testing,
+  worse on compound requests) — added automatic retry, which measurably helps
+  but doesn't fully eliminate it. Documented as a known limitation, not
+  silently papered over.
+
 ## 2026-08-03 — v1 scaffold — Multi-tenant pivot + real implementation
 
 **Correcting the record:** the previous entry below (dated the same day) described

@@ -64,12 +64,61 @@ Durable (Postgres via Prisma): `users`, `devices`, `refresh_tokens`, `usage_even
 (per-user/day counters), `tool_invocations` (an audit log of real OS actions taken —
 tool name/args/result/timestamp, **not** conversation content).
 
-**Conversation transcripts are ephemeral in v1** — buffered in Redis with a short
-TTL, cleared on disconnect, not written to a permanent table. This is a deliberate
-choice to avoid taking on a data-retention/privacy obligation before the core loop
-is validated. Persisted transcripts + a `memory_facts`/embeddings table for
-preference learning is a v2 addition, once "memory" is an explicit, disclosed
-feature (see `ROADMAP.md`).
+**Conversation transcripts persist durably as of Phase 2** (`conversations` /
+`messages` tables) — this was ephemeral-only in v1 (Redis, short TTL, cleared on
+disconnect) specifically to avoid taking on a data-retention obligation before the
+core loop was validated. Now that it's a real, disclosed feature, Redis is still
+used as a short-TTL cache for the in-flight session's working history (so a live
+turn doesn't round-trip Postgres on every message) but is no longer the only copy.
+
+## Memory / personalization (Phase 2)
+
+`memory_facts` (Postgres, `pgvector` extension) stores per-user preferences as
+embeddings — e.g. "prefers searching in Chrome, not Edge." Two deliberate design
+choices:
+
+- **Explicit, not passive.** Facts are only ever written when the assistant calls
+  a `remember_preference` tool (`server/src/tools/schemas.ts`) — never by silently
+  scanning every conversation for "interesting" facts. This keeps what gets
+  remembered predictable and attributable to a specific moment, not a black-box
+  heuristic a user can't reason about.
+- **Server-handled, not client-executed.** Unlike `open_app`/`web_search`/`open_url`,
+  `remember_preference` never round-trips to the client (see
+  `SERVER_TOOL_SCHEMAS`/`SERVER_TOOL_NAMES` in `tools/schemas.ts` and
+  `Session.handleServerTool()` in `ws/session.ts`) — it's a database write, not an
+  OS action, so there's nothing for a device to "implement" and no reason to pay a
+  WebSocket round-trip.
+
+Retrieval is RAG-style, not tool-based: each turn, the user's transcript is
+embedded and matched against that user's stored facts via pgvector cosine
+distance (`memory/memoryStore.ts`), and anything sufficiently relevant gets folded
+into the system prompt before the LLM call. The model never has to explicitly
+"ask" for memories — relevant context is just already there.
+
+Embeddings run locally (`@xenova/transformers`, `Xenova/all-MiniLM-L6-v2`,
+384-dim) — no external API call per embed, no added Groq cost. Because Prisma
+can't generate typed accessors for pgvector's `vector` column type, all reads/
+writes to `memory_facts.embedding` go through raw SQL (`$queryRaw`/`$executeRaw`),
+not the normal Prisma Client API — see the file comments in `memoryStore.ts`.
+
+## Known reliability limitation: Groq tool-call generation failures
+
+Confirmed via repeated real testing (not hypothetical): Llama 3.3 on Groq
+occasionally produces a malformed tool call — literally text like
+`<function=open_app{...}</function>` instead of a proper structured call — and
+Groq's API rejects the whole completion with a 400 `tool_use_failed` error. This
+is generation-quality noise, not a deterministic bug in this codebase: identical
+requests succeed on a retry most of the time, and it happens more often on
+compound requests ("open X and search Y") than single-action ones.
+`server/src/llm.ts` retries automatically (up to 4 attempts) when it detects this
+specific error, which measurably improves reliability but does not eliminate it
+— in testing, roughly an 80% single-attempt-success rate on the hardest compound
+case became ~80-90%+ with retries, not 100%. If a turn still fails after
+exhausting retries, the user gets a specific, actionable error ("try asking one
+thing at a time") rather than a generic failure. This is an upstream model/API
+reliability characteristic, not something fully fixable in application code —
+worth revisiting (e.g. a different tool-calling model) if it proves disruptive in
+practice.
 
 ## Session management & isolation
 
@@ -113,11 +162,10 @@ duplicate rather than import across a package boundary).
   — when present, the cap is lifted entirely for that user. This is the pressure
   valve that avoids needing Stripe/billing in v1.
 
-## Current limitations (intentional, for v1)
+## Current limitations (intentional)
 
-- Only 3 tools ship: `open_app`, `web_search`, `open_url` — the already-safest
-  class (no data exfiltration, no destructive actions).
-- No persisted memory/personalization (see Data model above) — fast-follow, not v1.
+- Only 3 client-executed tools ship: `open_app`, `web_search`, `open_url` — the
+  already-safest class (no data exfiltration, no destructive actions).
 - Push-to-talk hotkey, not wake-word — always-on listening is a bigger consent
   surface on a hosted multi-tenant product; earn that trust first.
 - TTS is browser `SpeechSynthesis` — free, swappable later behind the `TtsEngine`
