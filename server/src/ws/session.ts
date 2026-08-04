@@ -10,10 +10,31 @@ import { redis, conversationKey, CONVERSATION_TTL_SECONDS } from "../redis.js";
 import { db } from "../db.js";
 import { tryAcquireUserLock, releaseUserLock } from "./userLock.js";
 
+// Explicit about never verbalizing tool/function mechanics: without this, models
+// occasionally narrate their own tool usage in plain-text form (e.g. literally
+// writing "web_search(query: ...)" as if it were prose) instead of using the
+// structured tool-calling mechanism — that text then gets spoken/shown to the
+// user verbatim. sanitizeAssistantText() below is the defensive backstop for
+// when a model does this anyway.
 const SYSTEM_PROMPT =
   "You are a helpful voice assistant running on the user's device. Replies are spoken " +
-  "aloud, so be concise and conversational. Use the available tools to actually perform " +
-  "actions rather than just describing what you'd do.";
+  "aloud via text-to-speech, so: keep replies short and conversational, like natural " +
+  "speech. Use the available tools to actually perform actions rather than just " +
+  "describing what you'd do or asking the user to do it themselves. Never mention tool " +
+  "or function names, and never include code, JSON, or programming syntax of any kind " +
+  "in your reply — describe outcomes in plain language only (e.g. \"I found some results " +
+  "for that\" or \"Chrome should be open now\"), never HOW you did it.";
+
+// Defensive backstop, not the primary fix (that's the system prompt above): if a
+// model still verbalizes a tool call as text instead of using the structured
+// mechanism, never speak/show raw pseudo-code to the user. Confirmed real
+// symptom, not hypothetical — reported from actual usage.
+function sanitizeAssistantText(text: string): string {
+  let cleaned = text.replace(/```[\s\S]*?```/g, "").trim();
+  cleaned = cleaned.replace(/\b(open_app|web_search|open_url)\s*\([^)]*\)/gi, "").trim();
+  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  return cleaned.length > 0 ? cleaned : "Done.";
+}
 
 const TOOL_TIMEOUT_MS = 12_000;
 const MAX_TOOL_LOOP_STEPS = 6; // bounded — a misbehaving model can't hang a session forever
@@ -149,7 +170,7 @@ export class Session {
         this.history.push(assistantMessage);
 
         if (toolCalls.length === 0) {
-          this.send({ type: "assistant_text", text: assistantMessage.content });
+          this.send({ type: "assistant_text", text: sanitizeAssistantText(assistantMessage.content) });
           break;
         }
 
