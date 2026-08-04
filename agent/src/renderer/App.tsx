@@ -60,7 +60,21 @@ export function App() {
     isMicPermissionGranted().then((granted) => setMicPermissionWarning(!granted));
 
     window.jarvis.auth.onSessionChanged((s) => setLoggedIn(s.loggedIn));
-    window.jarvis.connection.onStatus((status) => setConnectionStatus(status));
+    window.jarvis.connection.onStatus((status) => {
+      setConnectionStatus(status);
+      // If the connection itself is the problem, no server response
+      // (transcript/assistant_text/error) is ever coming to reset micState —
+      // without this, an in-flight turn gets stuck showing "listening"/
+      // "thinking" forever, and audio_chunk/audio_end silently no-op into a
+      // dead socket with zero feedback to the user.
+      if (status === "reconnecting" || status === "error") {
+        if (useAppStore.getState().micState !== "idle") {
+          micCapture.current.stop();
+          setMicState("idle");
+          window.jarvis.conversation.setActive(false);
+        }
+      }
+    });
 
     window.jarvis.conversation.onTranscript((text) => {
       pushTurn({ role: "user", text });
