@@ -10,6 +10,16 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { VoiceOrb } from "./components/VoiceOrb";
 import { MicButton } from "./components/MicButton";
 
+const TOOL_LABELS: Record<string, string> = {
+  open_app: "Open app",
+  web_search: "Web search",
+  open_url: "Open URL",
+};
+
+function describeTool(name: string): string {
+  return TOOL_LABELS[name] ?? name;
+}
+
 export function App() {
   const [consented, setConsented] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -94,6 +104,14 @@ export function App() {
       setError(payload);
       setMicState("idle");
       window.jarvis.conversation.setActive(false);
+    });
+
+    // Tool execution was previously invisible in the UI — the client would open
+    // Chrome and search, but nothing in the conversation ever showed that it
+    // happened. Surface it as a compact inline chip between the turns it
+    // belongs to (see ConversationView.tsx).
+    window.jarvis.conversation.onToolActivity(({ name, result }) => {
+      pushTurn({ role: "tool", text: `${result.ok ? "✓" : "✗"} ${describeTool(name)} — ${result.message}` });
     });
 
     window.jarvis.hotkey.onPress(toggleMic);
