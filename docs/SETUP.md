@@ -85,16 +85,18 @@ Then point the packaged client's `.env` (`SERVER_WS_URL`/`SERVER_HTTP_URL`) at y
 | Signup/login fails immediately | Check `DATABASE_URL` is reachable and `npx prisma migrate dev` has been run. |
 | "You've hit today's free limit" right away | `DAILY_TURN_CAP` may be set too low for testing, or Redis wasn't cleared between test runs — bump the cap in `.env` for local dev. |
 | No transcript after speaking | Check `GROQ_API_KEY` is valid in `server/.env` and check the server terminal for errors. |
-| "Open Chrome" does nothing | The app name isn't in the whitelist — see `agent/src/main/tools/openApp.ts`'s `APP_MAP`. |
+| "Open Chrome" does nothing | The app name isn't in the whitelist — see `agent/src/main/tools/appRegistry.ts`. |
 | No sound on reply | Check Windows isn't blocking audio permissions/output device for Electron. |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (the app also surfaces a direct link to this when it detects the mic is blocked). |
+| `[session] findRelevantMemories failed` with `ERR_DLOPEN_FAILED` on `onnxruntime_binding.node` | `onnxruntime-node`'s native addon is missing a dependency DLL — almost always the Microsoft Visual C++ Redistributable (x64) isn't installed. Install it, restart your terminal, and if it still fails do a clean `server/node_modules` reinstall (antivirus sometimes strips files post-install). Non-fatal either way — the voice/tool loop keeps working, only memory recall is degraded until fixed (see `server/src/memory/embeddings.ts`). |
 
 ## Adding a new app to the whitelist
 
-Open `agent/src/main/tools/openApp.ts` and add an entry to `APP_MAP`, e.g.:
+Open `agent/src/main/tools/appRegistry.ts` and add an entry, e.g.:
 ```ts
-"vscode": "code",
-"spotify": "spotify:",
+vscode: { openCommand: "code", processName: "Code.exe" },
 ```
-This keeps the security model intact — the LLM can only ever request an app
-**name**, never an arbitrary path or command.
+Omit `processName` if the app shouldn't be force-closable (see the file's
+own comments — e.g. File Explorer). This keeps the security model intact —
+the LLM can only ever request an app **name**, never an arbitrary path or
+command.
