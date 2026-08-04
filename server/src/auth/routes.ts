@@ -17,13 +17,24 @@ const credentialsSchema = z.object({
   deviceId: z.string().uuid(),
   deviceName: z.string().min(1).max(100),
   platform: z.enum(["windows", "mac", "linux", "android", "ios"]),
+  // Tool names this client actually implements — filters which tool schemas the
+  // LLM is offered for this connection (see tools/schemas.ts). Defaults to empty
+  // (no tools) rather than erroring, so older/other clients degrade to chat-only
+  // instead of failing to log in.
+  capabilities: z.array(z.string()).default([]),
 });
 
-async function upsertDevice(userId: string, deviceId: string, deviceName: string, platform: string) {
+async function upsertDevice(
+  userId: string,
+  deviceId: string,
+  deviceName: string,
+  platform: string,
+  capabilities: string[]
+) {
   return db.device.upsert({
     where: { id: deviceId },
-    update: { lastSeenAt: new Date(), deviceName, platform },
-    create: { id: deviceId, userId, deviceName, platform },
+    update: { lastSeenAt: new Date(), deviceName, platform, capabilities },
+    create: { id: deviceId, userId, deviceName, platform, capabilities },
   });
 }
 
@@ -39,7 +50,7 @@ authRouter.post("/signup", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
     return;
   }
-  const { email, password, deviceId, deviceName, platform } = parsed.data;
+  const { email, password, deviceId, deviceName, platform, capabilities } = parsed.data;
 
   const existing = await db.user.findUnique({ where: { email } });
   if (existing) {
@@ -49,7 +60,7 @@ authRouter.post("/signup", async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await db.user.create({ data: { email, passwordHash } });
-  await upsertDevice(user.id, deviceId, deviceName, platform);
+  await upsertDevice(user.id, deviceId, deviceName, platform, capabilities);
 
   res.status(201).json(await issueSessionTokens(user.id, deviceId));
 });
@@ -60,7 +71,7 @@ authRouter.post("/login", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
     return;
   }
-  const { email, password, deviceId, deviceName, platform } = parsed.data;
+  const { email, password, deviceId, deviceName, platform, capabilities } = parsed.data;
 
   const user = await db.user.findUnique({ where: { email } });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
@@ -68,7 +79,7 @@ authRouter.post("/login", async (req, res) => {
     return;
   }
 
-  await upsertDevice(user.id, deviceId, deviceName, platform);
+  await upsertDevice(user.id, deviceId, deviceName, platform, capabilities);
   res.json(await issueSessionTokens(user.id, deviceId));
 });
 

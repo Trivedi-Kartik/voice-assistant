@@ -1,5 +1,6 @@
 import { getDeviceId, getDeviceName } from "./deviceId.js";
 import { loadRefreshToken, saveRefreshToken, clearRefreshToken } from "./tokenStore.js";
+import { DEVICE_CAPABILITIES } from "../deviceCapabilities.js";
 
 const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "http://localhost:8080";
 
@@ -89,6 +90,7 @@ class AuthManager {
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
         platform: "windows",
+        capabilities: DEVICE_CAPABILITIES,
       }),
     });
     if (!res.ok) {
