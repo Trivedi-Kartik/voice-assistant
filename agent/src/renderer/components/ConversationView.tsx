@@ -15,8 +15,10 @@ export function ConversationView({ turns }: { turns: Turn[] }) {
   return (
     <div className="conversation-view">
       {turns.map((turn, i) => (
-        <div key={i} className={`turn turn-${turn.role}`}>
-          {turn.text}
+        <div key={i} className={`turn-row turn-row-${turn.role}`}>
+          {turn.role === "assistant" && <span className="turn-avatar turn-avatar-assistant">A</span>}
+          <div className={`turn turn-${turn.role}`}>{turn.text}</div>
+          {turn.role === "user" && <span className="turn-avatar turn-avatar-user">Y</span>}
         </div>
       ))}
     </div>
