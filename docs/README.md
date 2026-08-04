@@ -82,8 +82,9 @@ npm install
 cp .env.example .env   # points at the local backend by default
 npm run dev
 ```
-Sign up with an email/password, accept the consent screen, then press
-**Ctrl+Shift+Space** and try: *"Open Chrome and search best pizza in Ahmedabad."*
+Sign up with an email/password, accept the consent screen, then either press
+**Ctrl+Shift+Space** or click the mic button and try: *"Open Chrome and search
+best pizza in Ahmedabad."*
 
 ## Full docs
 

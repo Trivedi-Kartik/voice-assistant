@@ -77,18 +77,16 @@ app.whenReady().then(async () => {
     connection,
     onLoggedIn: afterLogin,
     onLoggedOut: afterLogout,
+    onConversationActiveChanged: (active) => {
+      conversationActive = active;
+    },
   });
 
+  // Hotkey is now a single "toggle" signal — the renderer (which also has a
+  // clickable mic button) is the sole source of truth for whether it's currently
+  // recording, and decides start-vs-stop itself. See hotkey/triggerSource.ts.
   const hotkey = new HotkeyTriggerSource();
-  hotkey.start(
-    () => {
-      conversationActive = true;
-      win.webContents.send("hotkey:toggle", true);
-    },
-    () => {
-      win.webContents.send("hotkey:toggle", false);
-    }
-  );
+  hotkey.start(() => win.webContents.send("hotkey:pressed"));
 
   createTray(win, () => {
     connection.disconnect();

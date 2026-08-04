@@ -41,10 +41,11 @@ contextBridge.exposeInMainWorld("jarvis", {
     onToolActivity: (cb: (payload: { name: string; result: { ok: boolean; message: string } }) => void) => {
       ipcRenderer.on("conversation:toolActivity", (_e, payload) => cb(payload));
     },
+    setActive: (active: boolean) => ipcRenderer.send("conversation:setActive", active),
   },
   hotkey: {
-    onToggle: (cb: (active: boolean) => void) => {
-      ipcRenderer.on("hotkey:toggle", (_e, active) => cb(active));
+    onPress: (cb: () => void) => {
+      ipcRenderer.on("hotkey:pressed", () => cb());
     },
   },
   shell: {

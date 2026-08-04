@@ -8,6 +8,7 @@ export interface IpcContext {
   connection: Connection;
   onLoggedIn: () => Promise<void>;
   onLoggedOut: () => void;
+  onConversationActiveChanged: (active: boolean) => void;
 }
 
 // Every ipcMain.handle/on registration lives in this one file — easy to audit the
@@ -51,6 +52,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
   ipcMain.on("connection:retryNow", () => {
     ctx.connection.retryNow();
+  });
+
+  // Renderer is the source of truth for whether it's currently recording/
+  // processing a turn (via hotkey or the mic button) — main just needs to know
+  // so it doesn't auto-install an update mid-conversation. See updater/autoUpdate.ts.
+  ipcMain.on("conversation:setActive", (_e, active: boolean) => {
+    ctx.onConversationActiveChanged(active);
   });
 
   ipcMain.on("shell:openMicSettings", () => {

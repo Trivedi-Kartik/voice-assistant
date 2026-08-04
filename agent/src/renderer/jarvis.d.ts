@@ -29,9 +29,10 @@ export interface JarvisApi {
     onAssistantText(cb: (text: string) => void): void;
     onError(cb: (payload: { code: string; message: string }) => void): void;
     onToolActivity(cb: (payload: ToolActivity) => void): void;
+    setActive(active: boolean): void;
   };
   hotkey: {
-    onToggle(cb: (active: boolean) => void): void;
+    onPress(cb: () => void): void;
   };
   shell: {
     openMicSettings(): void;
