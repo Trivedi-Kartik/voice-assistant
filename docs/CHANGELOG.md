@@ -4,6 +4,36 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-04 — Phase 3 increment 4: `take_screenshot_and_describe`
+
+- **New tool: `take_screenshot_and_describe`.** Captures the primary display
+  (Electron `desktopCapturer`, downscaled to ~1280px wide JPEG), sends it to
+  a new `POST /vision/describe` endpoint, which calls Groq's
+  `llama-3.2-11b-vision-preview` (`server/src/vision.ts`) and returns a text
+  description — spoken back to the user like any other tool result. The
+  third `sensitivity: "high"` tool, same Allow/Deny gate as `close_app`/
+  `read_clipboard`.
+- **Deliberately bypasses the WS `tool_call` protocol for the image itself**
+  — every other tool's `ToolResult` gets persisted into the `ToolInvocation`
+  audit table; a full screen capture durably stored in Postgres forever
+  would be a real problem. The image travels only in the one HTTPS request
+  to `/vision/describe`; only the resulting text ever becomes a `ToolResult`.
+- Fixed a real gotcha this surfaced: `server/src/index.ts` had one global
+  `express.json()` with the 100kb default, applied before any router saw the
+  request — a base64 screenshot would 413 before a route-local limit could
+  help. Scoped `/auth` to keep the small default and gave `/vision` its own
+  25MB limit instead of raising the global one.
+- `/vision/describe` reuses `checkAndConsumeTurn` (the same daily-cap check
+  the WS turn loop uses) so a direct hit against the endpoint can't burn
+  through the shared Groq key's quota unbounded.
+- Consent screen updated: screenshots are the most sensitive thing shared so
+  far (an actual image of your screen going to a cloud model), disclosed
+  explicitly, always confirmed first.
+- Wired through the same four sync points as every prior tool.
+- **Not yet verified:** real screen capture, the HTTP round-trip, and an
+  actual Groq vision response — this dev environment is Linux, needs a pass
+  on the user's Windows machine.
+
 ## 2026-08-04 — Phase 3 increment 3: `read_clipboard`, plus a user-facing capabilities doc
 
 - **New tool: `read_clipboard`.** Reads clipboard text via Electron's built-in

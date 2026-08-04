@@ -80,6 +80,21 @@ class AuthManager {
     if (!res.ok) throw new Error("set_groq_key_failed");
   }
 
+  // Used by the take_screenshot_and_describe tool (tools/takeScreenshot.ts) —
+  // deliberately not exposed as a generic authenticated-fetch helper, so the
+  // access token stays encapsulated in here per this class's own invariant.
+  async describeScreenshot(imageDataUri: string): Promise<string> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/vision/describe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.session.accessToken}` },
+      body: JSON.stringify({ imageDataUri }),
+    });
+    if (!res.ok) throw new Error(`describe_failed_${res.status}`);
+    const data = (await res.json()) as { description: string };
+    return data.description;
+  }
+
   private async postCredentials(path: string, email: string, password: string): Promise<TokenResponse> {
     const res = await fetch(`${SERVER_HTTP_URL}${path}`, {
       method: "POST",

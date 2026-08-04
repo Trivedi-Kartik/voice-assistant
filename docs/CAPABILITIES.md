@@ -30,6 +30,7 @@ already calls for on every increment.
 | "Remind me to call mom in 20 minutes" | Sets a reminder that fires as a desktop notification after that delay. Only understands **relative** delays ("in 20 minutes," "in 2 hours") — not "at 6pm" yet, since nothing tells it your timezone. Stored only on this device: it needs the app running (the system tray counts) at fire time, doesn't sync to other devices, and if the app was fully closed when a reminder was due, it fires as soon as you reopen it instead of being lost. |
 | "I prefer Chrome over Edge" / "I live in Ahmedabad" | The assistant may explicitly choose to remember something you said as a durable fact, and bring it back up in later conversations (semantic recall, not literal keyword match). It only remembers when it decides something is clearly worth it — not a passive transcript scan of everything you say. |
 | "What's on my clipboard?" / "Can you fix the grammar in what I copied?" | Reads your current clipboard text and shares it with the assistant — **always asks you to confirm first**, since clipboard contents can be private (passwords, OTPs, anything). Long content gets truncated to 4,000 characters. |
+| "What's this error say?" / "Describe what's on my screen" | Takes a screenshot of your primary monitor and describes it back to you — **always asks you to confirm first**, since this is the most sensitive thing the assistant can access (a screenshot goes to a cloud AI model to be described). Since the hotkey is global, you don't need to switch to Karvix to use this — say it while looking at whatever you want described, and Karvix's own window is never brought to the front during the process. Only your primary monitor is captured, not every screen. |
 
 ## Accounts & limits
 
@@ -43,11 +44,10 @@ already calls for on every increment.
 ## Known gaps, today
 
 - Windows only.
-- No screen/vision capability yet — it can't see or describe what's on your
-  screen (planned: `take_screenshot_and_describe`, not yet built — see
-  `ROADMAP.md`).
+- Screen description only covers your primary monitor, not every display.
 - Reminders and preferences don't sync across multiple devices.
-- No email, calendar, or clipboard access yet.
+- No email or calendar access yet (`send_email_draft` is next, pending
+  Gmail OAuth setup — see `ROADMAP.md`).
 
 For what's coming next, see `ROADMAP.md`. For why any of this is built the
 way it is, see `docs/ARCHITECTURE.md`.

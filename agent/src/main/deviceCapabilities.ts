@@ -10,4 +10,5 @@ export const DEVICE_CAPABILITIES = [
   "control_media",
   "set_reminder",
   "read_clipboard",
+  "take_screenshot_and_describe",
 ];

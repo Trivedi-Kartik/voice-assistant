@@ -7,6 +7,7 @@ import { openUrlTool } from "./openUrl.js";
 import { controlMediaTool } from "./controlMedia.js";
 import { setReminderTool } from "./setReminder.js";
 import { readClipboardTool } from "./readClipboard.js";
+import { takeScreenshotTool } from "./takeScreenshot.js";
 import { TOOL_NAMES } from "../../shared/toolContract.js";
 
 // One file per tool, identical shape (name/parseArgs/execute) — no shared mutable
@@ -20,6 +21,7 @@ const REGISTRY: Record<string, ToolDefinition<any>> = {
   [controlMediaTool.name]: controlMediaTool,
   [setReminderTool.name]: setReminderTool,
   [readClipboardTool.name]: readClipboardTool,
+  [takeScreenshotTool.name]: takeScreenshotTool,
 };
 
 // Cheap insurance against silent drift between this registry and

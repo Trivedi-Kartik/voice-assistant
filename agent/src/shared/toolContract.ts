@@ -11,6 +11,7 @@ export const TOOL_NAMES = [
   "control_media",
   "set_reminder",
   "read_clipboard",
+  "take_screenshot_and_describe",
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
