@@ -5,6 +5,14 @@
 // overkill for 3 string literals. Keep this in sync with
 // agent/src/shared/toolContract.ts by hand; toolSchemasMatchContract() below plus
 // the client-side equivalent test are the guardrail against drift.
-export const TOOL_NAMES = ["open_app", "close_app", "web_search", "open_url"] as const;
+export const TOOL_NAMES = [
+  "open_app",
+  "close_app",
+  "web_search",
+  "open_url",
+  "control_media",
+  "set_reminder",
+  "read_clipboard",
+] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];

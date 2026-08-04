@@ -53,13 +53,38 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   a pass on a real Windows machine (this dev environment is Linux) — apps not
   actually installed/running already fail gracefully either way.
 
+### ✅ Increment 2 — `control_media` + `set_reminder` (this build)
+- New `control_media` tool — play/pause, next/prev, volume, mute — simulated
+  via `user32.dll`'s `keybd_event` through a fixed PowerShell command, not a
+  native Node addon. See `docs/ARCHITECTURE.md` "control_media."
+- New `set_reminder` tool — relative-delay only ("in 10 minutes", not "at
+  6pm" — no timezone plumbing yet). Deliberately **client-local**
+  (`electron-store` + Electron `Notification`, no server changes): avoids
+  front-loading Phase 6's task-queue/background-job infra into a "low-risk"
+  increment. Known limitation: only fires if the app is running at the time;
+  overdue reminders catch up on next launch rather than being lost. See
+  `docs/ARCHITECTURE.md` "set_reminder" for the full trade-off.
+
+### ✅ Increment 3 — `read_clipboard` (this build)
+- New `read_clipboard` tool — the second `sensitivity: "high"` tool, gated by
+  the same Allow/Deny confirmation as `close_app`, but for a different reason
+  (privacy, not destructiveness — see `docs/ARCHITECTURE.md`). Truncated to
+  4,000 characters.
+
 ### Next
-- Low-risk: `set_reminder`, `control_media` (play/pause/volume).
-- Then moderate: `read_clipboard`, `take_screenshot_and_describe`.
-- Higher-risk last, each with its own mini privacy review before shipping:
-  `send_email_draft` (Gmail API, OAuth, careful scoping).
-- Each new tool still follows the strict-whitelist rule from `docs/ARCHITECTURE.md`
-  and ships as its own reviewed increment, not a single "Phase 3 dump."
+- `take_screenshot_and_describe` — deliberately **not** bundled with
+  `read_clipboard` despite both being "moderate" tier: it needs a
+  vision-capable model (today's tool-calling model is text-only), a way to
+  move image data through a protocol that's text-only today, and its own
+  consent treatment — real architecture work, not a same-shape addition like
+  every tool so far. Needs its own planning pass.
+- `send_email_draft` — blocked on external setup, not just code: needs a
+  Google Cloud OAuth client (ID/secret) the user has to create themselves,
+  plus its own mini privacy review before shipping, per this file's own
+  original framing.
+- Each new tool still follows the strict-whitelist rule from `docs/ARCHITECTURE.md`,
+  ships as its own reviewed increment (not a single "Phase 3 dump"), and gets
+  a matching entry in `docs/CAPABILITIES.md` so users know it exists.
 
 ## Phase 4 — Better TTS
 - Swap browser `SpeechSynthesis` for **Piper** (self-hosted, free, more natural) or

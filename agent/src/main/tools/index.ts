@@ -4,6 +4,9 @@ import { openAppTool } from "./openApp.js";
 import { closeAppTool } from "./closeApp.js";
 import { webSearchTool } from "./webSearch.js";
 import { openUrlTool } from "./openUrl.js";
+import { controlMediaTool } from "./controlMedia.js";
+import { setReminderTool } from "./setReminder.js";
+import { readClipboardTool } from "./readClipboard.js";
 import { TOOL_NAMES } from "../../shared/toolContract.js";
 
 // One file per tool, identical shape (name/parseArgs/execute) — no shared mutable
@@ -14,6 +17,9 @@ const REGISTRY: Record<string, ToolDefinition<any>> = {
   [closeAppTool.name]: closeAppTool,
   [webSearchTool.name]: webSearchTool,
   [openUrlTool.name]: openUrlTool,
+  [controlMediaTool.name]: controlMediaTool,
+  [setReminderTool.name]: setReminderTool,
+  [readClipboardTool.name]: readClipboardTool,
 };
 
 // Cheap insurance against silent drift between this registry and
