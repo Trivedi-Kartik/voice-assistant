@@ -73,7 +73,10 @@ header {
 }
 .mic-button-listening:hover { background: linear-gradient(160deg, #ef5a4d, #c62828); }
 
-.voice-orb {
+/* The orb itself is now rendered on <canvas> (see VoiceOrb.tsx) — a particle
+   ring + glow + core drawn every frame via requestAnimationFrame, not layered
+   CSS gradients. This wrapper just positions the canvas and its state label. */
+.voice-orb-canvas-wrap {
   position: relative;
   width: 220px;
   height: 220px;
@@ -81,141 +84,16 @@ header {
   align-items: center;
   justify-content: center;
 }
-
-/* Large soft blurred glow behind everything — breathes continuously in every
-   state (including idle) so the orb never reads as a static flat circle. */
-.voice-orb-halo {
-  position: absolute;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(90, 134, 217, 0.35), transparent 70%);
-  filter: blur(6px);
-  animation: halo-breathe 4s ease-in-out infinite;
-  z-index: 0;
+.voice-orb-canvas-wrap canvas {
+  display: block;
 }
-
-.voice-orb-core {
-  position: relative;
-  width: 116px;
-  height: 116px;
-  border-radius: 50%;
-  overflow: hidden; /* clips the sheen to a circle */
-  background: radial-gradient(circle at 35% 30%, #6b93de, #24467f 70%);
-  box-shadow: 0 0 50px rgba(74, 121, 214, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.08);
-  transition: background 0.6s ease, box-shadow 0.6s ease;
-  z-index: 2;
-  animation: orb-breathe 3.5s ease-in-out infinite;
-}
-
-/* Slowly rotating light sheen inside the core — gives it a "living liquid
-   glass" quality instead of a flat painted gradient, in every state. */
-.voice-orb-sheen {
-  position: absolute;
-  inset: -20%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(255, 255, 255, 0.3) 60deg,
-    transparent 140deg,
-    transparent 360deg
-  );
-  mix-blend-mode: screen;
-  opacity: 0.6;
-  animation: sheen-rotate 6s linear infinite;
-}
-
-.voice-orb-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 2px solid rgba(90, 134, 217, 0.3);
-  width: 160px;
-  height: 160px;
-  opacity: 0;
-  z-index: 1;
-}
-.voice-orb-ring-2 { width: 200px; height: 200px; }
 .voice-orb-label {
   position: absolute;
   bottom: -32px;
   font-size: 13px;
   color: #9aa4b2;
   white-space: nowrap;
-  z-index: 2;
   letter-spacing: 0.2px;
-}
-
-/* Idle: no longer static — breathing core + rotating sheen (always-on above)
-   plus a slow ambient ring pulse, just gentler than the active states. */
-.voice-orb-idle .voice-orb-ring { animation: orb-ring-idle-pulse 4s ease-out infinite; }
-.voice-orb-idle .voice-orb-ring-2 { animation-delay: 1.2s; }
-
-.voice-orb-listening .voice-orb-core {
-  background: radial-gradient(circle at 35% 30%, #ff9a8d, #b3271f 70%);
-  box-shadow: 0 0 60px rgba(230, 74, 25, 0.55), inset 0 0 30px rgba(255, 255, 255, 0.1);
-  animation: orb-pulse-scale 1s ease-in-out infinite;
-}
-.voice-orb-listening .voice-orb-halo { background: radial-gradient(circle, rgba(230, 74, 25, 0.4), transparent 70%); }
-.voice-orb-listening .voice-orb-sheen { animation-duration: 2.4s; }
-.voice-orb-listening .voice-orb-ring {
-  border-color: rgba(230, 74, 25, 0.5);
-  animation: orb-ring-pulse 1.4s ease-out infinite;
-}
-.voice-orb-listening .voice-orb-ring-2 { animation-delay: 0.35s; }
-
-.voice-orb-thinking .voice-orb-core {
-  background: conic-gradient(from 0deg, #5a86d9, #8e5fd6, #d95acb, #5a86d9);
-  animation: orb-rotate 1.8s linear infinite;
-  box-shadow: 0 0 50px rgba(142, 95, 214, 0.45);
-}
-.voice-orb-thinking .voice-orb-halo {
-  background: radial-gradient(circle, rgba(142, 95, 214, 0.4), transparent 70%);
-  animation-duration: 1.6s;
-}
-
-.voice-orb-speaking .voice-orb-core {
-  background: radial-gradient(circle at 35% 30%, #7dffc4, #00695c 70%);
-  box-shadow: 0 0 60px rgba(0, 137, 123, 0.5), inset 0 0 30px rgba(255, 255, 255, 0.1);
-  animation: orb-pulse-scale 0.55s ease-in-out infinite;
-}
-.voice-orb-speaking .voice-orb-halo {
-  background: radial-gradient(circle, rgba(0, 137, 123, 0.4), transparent 70%);
-  animation-duration: 0.9s;
-}
-.voice-orb-speaking .voice-orb-sheen { animation-duration: 1s; }
-.voice-orb-speaking .voice-orb-ring {
-  border-color: rgba(0, 137, 123, 0.5);
-  animation: orb-ring-pulse 1s ease-out infinite;
-}
-.voice-orb-speaking .voice-orb-ring-2 { animation-delay: 0.2s; }
-
-@keyframes halo-breathe {
-  0%, 100% { opacity: 0.5; transform: scale(0.92); }
-  50% { opacity: 0.9; transform: scale(1.08); }
-}
-@keyframes sheen-rotate {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-@keyframes orb-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-}
-@keyframes orb-pulse-scale {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.14); }
-}
-@keyframes orb-ring-pulse {
-  0% { transform: scale(0.8); opacity: 0.6; }
-  100% { transform: scale(1.4); opacity: 0; }
-}
-@keyframes orb-ring-idle-pulse {
-  0% { transform: scale(0.85); opacity: 0.35; }
-  100% { transform: scale(1.25); opacity: 0; }
-}
-@keyframes orb-rotate {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
 }
 
 .conversation-view { max-height: 40vh; overflow-y: auto; padding: 12px 16px 16px; }
