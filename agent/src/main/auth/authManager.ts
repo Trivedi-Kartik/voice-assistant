@@ -1,0 +1,128 @@
+import { getDeviceId, getDeviceName } from "./deviceId.js";
+import { loadRefreshToken, saveRefreshToken, clearRefreshToken } from "./tokenStore.js";
+
+const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "http://localhost:8080";
+
+interface TokenResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+interface Session {
+  accessToken: string;
+}
+
+// Holds the access token in main-process memory ONLY — it never crosses into the
+// renderer, which is the process most likely to ever load anything web-ish later
+// (e.g. an OAuth webview). See docs/ARCHITECTURE.md "Auth on the client".
+class AuthManager {
+  private session: Session | null = null;
+  private refreshTimer: NodeJS.Timeout | null = null;
+
+  async signup(email: string, password: string): Promise<void> {
+    this.applyTokens(await this.postCredentials("/auth/signup", email, password));
+  }
+
+  async login(email: string, password: string): Promise<void> {
+    this.applyTokens(await this.postCredentials("/auth/login", email, password));
+  }
+
+  // Called at app startup to silently resume a session from the persisted
+  // refresh token, so re-launching the app doesn't force a re-login.
+  async tryRestoreSession(): Promise<boolean> {
+    const refreshToken = loadRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      await this.refresh(refreshToken);
+      return true;
+    } catch {
+      clearRefreshToken();
+      return false;
+    }
+  }
+
+  async logout(): Promise<void> {
+    if (this.session) {
+      await fetch(`${SERVER_HTTP_URL}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.session.accessToken}` },
+      }).catch(() => undefined);
+    }
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.session = null;
+    clearRefreshToken();
+  }
+
+  isLoggedIn(): boolean {
+    return this.session !== null;
+  }
+
+  async getWsTicket(): Promise<string> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/ws-ticket`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.session.accessToken}` },
+    });
+    if (!res.ok) throw new Error("ws_ticket_failed");
+    const data = (await res.json()) as { ticket: string };
+    return data.ticket;
+  }
+
+  async setGroqKey(apiKey: string): Promise<void> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/me/groq-key`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.session.accessToken}` },
+      body: JSON.stringify({ apiKey }),
+    });
+    if (!res.ok) throw new Error("set_groq_key_failed");
+  }
+
+  private async postCredentials(path: string, email: string, password: string): Promise<TokenResponse> {
+    const res = await fetch(`${SERVER_HTTP_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        deviceId: getDeviceId(),
+        deviceName: getDeviceName(),
+        platform: "windows",
+      }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? `request_failed_${res.status}`);
+    }
+    return res.json() as Promise<TokenResponse>;
+  }
+
+  private async refresh(refreshToken: string): Promise<void> {
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) throw new Error("refresh_failed");
+    this.applyTokens((await res.json()) as TokenResponse);
+  }
+
+  private applyTokens(data: TokenResponse): void {
+    this.session = { accessToken: data.accessToken };
+    saveRefreshToken(data.refreshToken);
+    this.scheduleProactiveRefresh(data.refreshToken, data.expiresIn);
+  }
+
+  // Refresh at ~80% of TTL so refresh is the common path, not just a 401-triggered
+  // fallback — the user should almost never see an auth-expired hiccup mid-use.
+  private scheduleProactiveRefresh(refreshToken: string, expiresInSeconds: number): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    const delayMs = expiresInSeconds * 0.8 * 1000;
+    this.refreshTimer = setTimeout(() => {
+      this.refresh(refreshToken).catch((err) => console.error("[auth] proactive refresh failed", err));
+    }, delayMs);
+  }
+}
+
+export const authManager = new AuthManager();

@@ -1,0 +1,70 @@
+# Roadmap
+
+Ordered by what unlocks the most value next for a **multi-tenant** product — this
+order differs from a purely technical build sequence (see reasoning per phase).
+Each phase builds on a working previous phase.
+
+## ✅ v1 — Core loop, multi-tenant (this build)
+Accounts (signup/login) → hotkey push-to-talk → STT → LLM tool-calling → whitelisted
+tool execution → spoken reply. Per-user session isolation, shared-key daily rate
+cap with a BYOK escape valve, ephemeral (non-persisted) conversation transcripts.
+Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
+
+## Phase 2 — Persistent memory / personalization
+- Persist conversation history properly (a real `messages` table, not the v1
+  ephemeral Redis buffer) once "memory" becomes an explicit, disclosed feature.
+- Add per-user preference memory (e.g. "always search in Chrome, not Edge") via
+  local embeddings (`@xenova/transformers`, free, no API cost) stored in Neon's
+  `pgvector` extension — no second vector database needed.
+- **Why first:** with real accounts already in place, "it remembers my
+  preferences" is the single strongest retention lever available — stronger here
+  than in a single-user design, where there's no one to retain.
+
+## Phase 3 — More tools, incrementally
+- Low-risk first: `set_reminder`, `control_media` (play/pause/volume).
+- Then moderate: `read_clipboard`, `take_screenshot_and_describe`.
+- Higher-risk last, each with its own mini privacy review before shipping:
+  `send_email_draft` (Gmail API, OAuth, careful scoping).
+- Each new tool still follows the strict-whitelist rule from `docs/ARCHITECTURE.md`
+  and ships as its own reviewed increment, not a single "Phase 3 dump."
+
+## Phase 4 — Better TTS
+- Swap browser `SpeechSynthesis` for **Piper** (self-hosted, free, more natural) or
+  ElevenLabs free tier, behind the existing `TtsEngine` seam
+  (`agent/src/renderer/audio/ttsPlayback.ts`) — no protocol/UI rewrite needed.
+- **Why after tools, not before:** upgrades perceived quality once people are
+  already using it daily; low value if nobody's retained yet.
+
+## Phase 5 — Wake word (hands-free)
+- Integrate Porcupine (free tier, offline, low-latency) via the
+  `WakeWordTriggerSource` seam already defined (`agent/src/main/wakeword/`).
+- Keep the hotkey as a fallback/manual override.
+- **Why this late:** always-on listening is a bigger consent/privacy surface on a
+  hosted multi-tenant product than push-to-talk — do this after trust is earned,
+  not before.
+
+## Phase 6 — Task queue for long actions
+- BullMQ + Redis (Upstash, already in use) so actions like "summarize this PDF and
+  email it to me" don't block the conversation loop.
+- **Why this late:** nothing in the tool set before Phase 3's later entries is
+  actually long-running — building this earlier solves a problem that doesn't
+  exist yet.
+
+## Phase 7 — Mobile companion (Android)
+- Thin React Native client talking to the same backend (auth/session design
+  already supports this — see `docs/ARCHITECTURE.md`).
+- Automation scope is smaller on Android (Accessibility Service + Intents, not full
+  OS control) — chat + notifications + limited actions are realistic; full parity
+  with desktop is not.
+- **Why last:** a new client surface and a new automation model, worth the cost
+  only once desktop retention is validated.
+
+## Explicitly not planned soon
+- iOS automation (Apple's sandboxing makes this impractical).
+- Arbitrary shell command execution from voice (security decision, see
+  `docs/ARCHITECTURE.md`).
+- Stripe/paid billing before the BYOK + waitlist-cap combo is visibly limiting
+  growth (see `docs/ARCHITECTURE.md` "Cost control").
+
+---
+*This file gets reordered/updated as priorities shift — treat it as living, not fixed.*

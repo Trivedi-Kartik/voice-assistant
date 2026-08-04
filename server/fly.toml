@@ -1,0 +1,24 @@
+# Fly.io app config. Long-running single process serving both REST auth
+# endpoints and the WebSocket — see docs/ARCHITECTURE.md for why (real
+# WebSocket support with in-memory per-session state rules out serverless).
+app = "voice-agent-server" # rename to your actual Fly app name
+primary_region = "bom" # Mumbai — pick the region closest to your first real users
+
+[build]
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false # keep warm — a cold-started WS handshake feels broken to voice UX
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/health"

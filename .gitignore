@@ -1,0 +1,13 @@
+node_modules/
+dist/
+release/
+.env
+*.log
+
+# Prisma migrations are environment-specific until a real dev DB convention is set;
+# generate them locally with `npx prisma migrate dev` per docs/SETUP.md.
+server/prisma/migrations/
+
+# Electron/Vite build output
+agent/dist/
+agent/release/
