@@ -1,10 +1,26 @@
 import { TOOL_NAMES } from "./toolNames.js";
 
+// Shared shape for both client-executed (GROQ_TOOL_SCHEMAS) and server-handled
+// (SERVER_TOOL_SCHEMAS) tools — lets llm.ts accept either/both without TS
+// inferring two incompatible literal array types from separate object literals.
+export interface ToolSchema {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, { type: string; description: string }>;
+      required: string[];
+    };
+  };
+}
+
 // Tool schemas offered to the Groq tool-calling LLM. Names MUST exactly match
 // agent/src/shared/toolContract.ts (kept in sync by hand, see toolNames.ts) and the
 // client's tool registry (agent/src/main/tools/index.ts) — the LLM only ever picks
 // from this fixed, typed set, never a raw command string. See docs/ARCHITECTURE.md.
-export const GROQ_TOOL_SCHEMAS = [
+export const GROQ_TOOL_SCHEMAS: ToolSchema[] = [
   {
     type: "function" as const,
     function: {
@@ -48,6 +64,37 @@ export const GROQ_TOOL_SCHEMAS = [
     },
   },
 ];
+
+// Server-handled tools (Phase 2) — these never round-trip to the client at all,
+// unlike GROQ_TOOL_SCHEMAS above. They don't touch the user's OS, so there's
+// nothing for a device to "implement" — always offered regardless of
+// Device.capabilities. See ws/session.ts for where these get dispatched
+// differently from client tools.
+export const SERVER_TOOL_SCHEMAS: ToolSchema[] = [
+  {
+    type: "function" as const,
+    function: {
+      name: "remember_preference",
+      description:
+        "Save a durable fact or preference about the user for future conversations (e.g. " +
+        "'prefers Chrome over Edge', 'lives in Ahmedabad'). Only call this when the user " +
+        "states something clearly worth remembering long-term — not for one-off requests " +
+        "or small talk.",
+      parameters: {
+        type: "object",
+        properties: {
+          fact: {
+            type: "string",
+            description: "The fact to remember, written in third person, e.g. 'Prefers searching in Chrome.'",
+          },
+        },
+        required: ["fact"],
+      },
+    },
+  },
+];
+
+export const SERVER_TOOL_NAMES = new Set(SERVER_TOOL_SCHEMAS.map((s) => s.function.name));
 
 function assertSchemasMatchContract() {
   const schemaNames = GROQ_TOOL_SCHEMAS.map((s) => s.function.name).sort();

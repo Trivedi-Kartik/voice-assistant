@@ -10,15 +10,29 @@ tool execution → spoken reply. Per-user session isolation, shared-key daily ra
 cap with a BYOK escape valve, ephemeral (non-persisted) conversation transcripts.
 Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
 
-## Phase 2 — Persistent memory / personalization
-- Persist conversation history properly (a real `messages` table, not the v1
-  ephemeral Redis buffer) once "memory" becomes an explicit, disclosed feature.
-- Add per-user preference memory (e.g. "always search in Chrome, not Edge") via
-  local embeddings (`@xenova/transformers`, free, no API cost) stored in Neon's
-  `pgvector` extension — no second vector database needed.
+## ✅ Phase 2 — Persistent memory / personalization (this build)
+- Conversation history now persists durably (`conversations`/`messages` tables),
+  not just the v1 ephemeral Redis buffer — an explicit, disclosed feature (see
+  `docs/ARCHITECTURE.md`), not silent logging.
+- Per-user preference memory via a new server-handled `remember_preference` tool
+  — the assistant explicitly decides when something's worth remembering (e.g.
+  "prefers Chrome over Edge"), rather than passively scanning every conversation.
+  Facts are embedded locally (`@xenova/transformers`, free, no API cost) and
+  stored in Neon's `pgvector` extension — no second vector database needed.
+- Relevant memories are retrieved by semantic search each turn and folded into
+  the system prompt (RAG-style) — the model doesn't need to explicitly call a
+  "recall" tool, relevant context is just already there.
 - **Why first:** with real accounts already in place, "it remembers my
   preferences" is the single strongest retention lever available — stronger here
   than in a single-user design, where there's no one to retain.
+- **Found and fixed while building this:** Groq's Llama 3.3 occasionally
+  generates a malformed tool call (Groq rejects it with a 400 `tool_use_failed`)
+  on totally valid requests, especially compound ones ("open X and search Y") —
+  confirmed via repeated real testing, not hypothetical. Added automatic retry
+  (up to 4 attempts) in `server/src/llm.ts`, which measurably improves but does
+  not eliminate this — a residual reliability gap in the underlying model/API,
+  not something fixable purely in this codebase. Worth revisiting if it proves
+  disruptive in practice (e.g. a different tool-calling model).
 
 ## Phase 3 — More tools, incrementally
 - Low-risk first: `set_reminder`, `control_media` (play/pause/volume).
