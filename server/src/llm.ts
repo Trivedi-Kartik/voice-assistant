@@ -68,7 +68,15 @@ export async function runLlmStep(
       if (isLongWait || attempt >= MAX_GENERATION_RETRIES || !(rateLimited || isRetryableToolUseFailure(err))) {
         throw err;
       }
-      console.error(`[llm] retrying (attempt ${attempt}, rateLimited=${rateLimited})`, err);
+      // warn, not error: this is the expected/handled path (see comment above and
+      // docs/ARCHITECTURE.md) — most of these retries succeed and the user never
+      // sees a failure, so logging the full error at `error` severity here made a
+      // routine, self-healing retry look like a crash. The real failure, if
+      // retries are exhausted, is already logged with the full error by the
+      // caller (ws/session.ts "[session] turn failed").
+      console.warn(
+        `[llm] retrying (attempt ${attempt}/${MAX_GENERATION_RETRIES}, reason=${rateLimited ? "rate_limited" : "tool_use_failed"})`
+      );
       if (rateLimited) await sleep(RATE_LIMIT_RETRY_DELAY_MS);
     }
   }
