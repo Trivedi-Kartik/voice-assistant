@@ -4,6 +4,47 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Visual redesign: glassmorphic, signal-gradient, AI-styled orb
+
+- **Whole-app visual redesign**, following an approved direction mockup —
+  glassmorphic cards, a violet/magenta/coral "signal" gradient spent
+  deliberately in one place (the orb, primary buttons, active states), an
+  ambient drifting aurora backdrop with slow particles, and a small drawn
+  bot avatar for the assistant in chat instead of a generic letter.
+  `agent/src/renderer/styles.css`'s color tokens were replaced wholesale
+  (one source of truth, not new tokens alongside old hardcoded hex values).
+- **`VoiceOrb.tsx` rewritten from `<canvas>` to pure CSS/SVG** — glow,
+  dashed ring, a radar-style sweep, three independently-orbiting
+  satellites, and a gradient core with a pulsing neural-line constellation.
+  The whole motif is rotation/opacity/scale `@keyframes`, so the old
+  per-frame `requestAnimationFrame` particle-ring loop is gone entirely.
+  Kept the *functional* part of the old design — state encoded in color
+  (idle/listening/thinking/speaking each get a distinct 3-stop gradient) —
+  but simplified motion to two tiers (idle calm / any-active energetic)
+  instead of 4 distinct speed profiles.
+- `LoginScreen.tsx` restructured to a floating glass auth card with a small
+  orb, a real tab toggle (Log in / Sign up) instead of a mode-switch link,
+  and glass-styled inputs. Settings/Help/Consent inherit the new tokens and
+  glass treatment for consistency, but not the orb/bot/particle motifs —
+  those are specific to the two screens the approved mockup actually showed.
+- **Also landed, found during the same pass:**
+  - Removed the tool-activity chips from the chat view entirely (e.g.
+    "✗ take_screenshot_and_describe — ...") — real user feedback that they
+    were just noise. Cleaned up the now-dead code behind them (`TOOL_LABELS`,
+    the `"tool"` turn role, the chip rendering in `ConversationView.tsx`).
+  - Login/signup speed: `bcryptjs` (pure-JS, not native bindings) was
+    hashing at cost factor 12 on every signup/login — dropped to 10, still
+    solidly within current security guidance, meaningfully faster.
+  - A real, pre-existing layout bug caught while touching this area:
+    `.link-button`/`.retry-button` had no explicit `display`, so the global
+    `button { display: block }` reset made text like "Sign up" wrap onto
+    its own line instead of sitting inline after "Need an account?" — fixed
+    with `display: inline`.
+- **Not yet verified:** this dev environment has no display, so the actual
+  rendered result (motion, glass/blur rendering, layout at the real 480×760
+  window size) needs a pass on the user's Windows machine, same as every
+  prior increment.
+
 ## 2026-08-11 — Fix spoken confirmation never actually resolving
 
 - **Real bug, confirmed via a live screenshot:** saying "yes" to a
