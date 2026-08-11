@@ -4,7 +4,7 @@ export type UiStatus = "idle" | "connecting" | "connected" | "reconnecting" | "e
 export type MicState = "idle" | "listening" | "thinking" | "speaking";
 
 interface ConversationTurn {
-  role: "user" | "assistant" | "tool";
+  role: "user" | "assistant";
   text: string;
 }
 

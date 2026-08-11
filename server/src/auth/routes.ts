@@ -58,7 +58,12 @@ authRouter.post("/signup", async (req, res) => {
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+  // bcryptjs is a pure-JS implementation (no native bindings), meaningfully
+  // slower per round than compiled bcrypt — 12 rounds was adding real,
+  // reported latency to every signup/login on top of the DB round-trip. 10
+  // is still solidly within current security guidance (OWASP's floor) and
+  // noticeably faster.
+  const passwordHash = await bcrypt.hash(password, 10);
   const user = await db.user.create({ data: { email, passwordHash } });
   await upsertDevice(user.id, deviceId, deviceName, platform, capabilities);
 

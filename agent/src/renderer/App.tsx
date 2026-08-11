@@ -10,23 +10,15 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { VoiceOrb } from "./components/VoiceOrb";
 import { MicButton } from "./components/MicButton";
+import { Particles } from "./components/Particles";
+import type { MicState } from "./state/store";
 
-// Was missing 5 of 8 tools — stale since each was added without this map
-// being updated. Keep in sync with server/src/tools/toolNames.ts.
-const TOOL_LABELS: Record<string, string> = {
-  open_app: "Open app",
-  close_app: "Close app",
-  web_search: "Web search",
-  open_url: "Open URL",
-  control_media: "Media control",
-  set_reminder: "Reminder",
-  read_clipboard: "Read clipboard",
-  take_screenshot_and_describe: "Screenshot",
+const ORB_LABELS: Record<MicState, string> = {
+  idle: "Press Ctrl+Shift+Space to talk",
+  listening: "Listening…",
+  thinking: "Thinking…",
+  speaking: "Speaking…",
 };
-
-function describeTool(name: string): string {
-  return TOOL_LABELS[name] ?? name;
-}
 
 export function App() {
   const [consented, setConsented] = useState<boolean | null>(null);
@@ -115,67 +107,93 @@ export function App() {
       window.jarvis.conversation.setActive(false);
     });
 
-    // Tool execution was previously invisible in the UI — the client would open
-    // Chrome and search, but nothing in the conversation ever showed that it
-    // happened. Surface it as a compact inline chip between the turns it
-    // belongs to (see ConversationView.tsx).
-    window.jarvis.conversation.onToolActivity(({ name, result }) => {
-      pushTurn({ role: "tool", text: `${result.ok ? "✓" : "✗"} ${describeTool(name)} — ${result.message}` });
-    });
-
     window.jarvis.hotkey.onPress(toggleMic);
     // Registered once on mount — main process is the single source of truth for
     // these events for the lifetime of the window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Rendered behind every screen (loading/consent/login/main), not just the
+  // main shell — the ambient backdrop is part of the app's identity, not
+  // something that only shows up once you're logged in.
+  const aurora = (
+    <div className="aurora">
+      <Particles />
+    </div>
+  );
+
   if (consented === null || loggedIn === null) {
-    return <div className="app-loading">Loading…</div>;
+    return (
+      <>
+        {aurora}
+        <div className="app-loading">Loading…</div>
+      </>
+    );
   }
 
   if (!consented) {
-    return <ConsentScreen onAccept={() => setConsented(true)} />;
+    return (
+      <>
+        {aurora}
+        <ConsentScreen onAccept={() => setConsented(true)} />
+      </>
+    );
   }
 
   if (!loggedIn) {
-    return <LoginScreen />;
+    return (
+      <>
+        {aurora}
+        <LoginScreen />
+      </>
+    );
   }
 
   return (
-    <div className="app-shell">
-      <header>
-        <StatusIndicator
-          connectionStatus={connectionStatus}
-          onRetry={() => window.jarvis.connection.retryNow()}
-        />
-        <button className="link-button" onClick={() => setShowHelp(true)}>
-          What can I ask?
-        </button>
-        <button className="link-button" onClick={() => setShowSettings(true)}>
-          Settings
-        </button>
-      </header>
+    <>
+      {aurora}
+      <div className="app-shell">
+        <header>
+          <div className="wordmark">Karvix</div>
+          <StatusIndicator
+            connectionStatus={connectionStatus}
+            onRetry={() => window.jarvis.connection.retryNow()}
+          />
+          <div className="header-links">
+            <button className="link-button" onClick={() => setShowHelp(true)}>
+              What can I ask?
+            </button>
+            <button className="link-button" onClick={() => setShowSettings(true)}>
+              Settings
+            </button>
+          </div>
+        </header>
 
-      {micPermissionWarning && (
-        <div className="warning-banner">
-          Microphone access is blocked.{" "}
-          <button className="link-button" onClick={() => window.jarvis.shell.openMicSettings()}>
-            Open Windows mic settings
-          </button>
+        {micPermissionWarning && (
+          <div className="warning-banner">
+            Microphone access is blocked.{" "}
+            <button className="link-button" onClick={() => window.jarvis.shell.openMicSettings()}>
+              Open Windows mic settings
+            </button>
+          </div>
+        )}
+
+        {lastError && <div className="error-banner">{lastError.message}</div>}
+
+        <div className="orb-stage">
+          <VoiceOrb state={micState} />
+          <div className={`orb-label${micState !== "idle" ? " active" : ""}`}>
+            <span className="dot" />
+            <span>{ORB_LABELS[micState]}</span>
+          </div>
+          <MicButton micState={micState} onClick={toggleMic} />
         </div>
-      )}
 
-      {lastError && <div className="error-banner">{lastError.message}</div>}
+        <ConversationView turns={turns} />
 
-      <div className="orb-stage">
-        <VoiceOrb state={micState} />
-        <MicButton micState={micState} onClick={toggleMic} />
+        {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+        {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
       </div>
-
-      <ConversationView turns={turns} />
-
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
-      {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
-    </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { VoiceOrb } from "./VoiceOrb";
 
 // Renderer never calls the auth API or holds tokens directly — it sends
 // credentials over IPC to main, which does the HTTPS call and keeps tokens out of
@@ -29,32 +30,59 @@ export function LoginScreen() {
 
   return (
     <div className="login-screen">
-      <h1>Karvix</h1>
-      <p className="subtitle">Sign in to talk to your assistant.</p>
-      <form onSubmit={submit}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password (min 8 characters)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={8}
-          required
-        />
-        {error && <div className="error-banner">{error}</div>}
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
-        </button>
-      </form>
-      <button className="link-button" onClick={() => setMode(mode === "login" ? "signup" : "login")}>
-        {mode === "login" ? "Need an account? Sign up" : "Already have an account? Log in"}
-      </button>
+      <div className="glass auth-card">
+        <VoiceOrb state="idle" size={84} />
+        <div className="wordmark">Karvix</div>
+        <p className="subtitle">Sign in to talk to your assistant.</p>
+
+        <div className="tabs">
+          <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>
+            Log in
+          </button>
+          <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>
+            Sign up
+          </button>
+          <div className={`thumb${mode === "signup" ? " signup" : ""}`} />
+        </div>
+
+        <form onSubmit={submit}>
+          <div className="field">
+            <label>Email</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input
+              type="password"
+              placeholder="Min 8 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              required
+            />
+          </div>
+          {error && <div className="error-banner">{error}</div>}
+          <button type="submit" className="cta" disabled={submitting}>
+            {submitting ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
+          </button>
+        </form>
+        <p className="switch-line">
+          {mode === "login" ? "Need an account? " : "Already have an account? "}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setMode(mode === "login" ? "signup" : "login")}
+          >
+            {mode === "login" ? "Sign up" : "Log in"}
+          </button>
+        </p>
+      </div>
     </div>
   );
 }
