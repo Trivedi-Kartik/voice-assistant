@@ -5,7 +5,12 @@ import type { ClientMessage, ServerMessage, ToolResult } from "../protocol.js";
 import { runLlmStep, type ChatMessage } from "../llm.js";
 import { transcribeAudio } from "../stt.js";
 import { isGroqRateLimit, isRetryableToolUseFailure, getRetryAfterSeconds, formatWaitTime } from "../groqErrors.js";
-import { toolSchemasForCapabilities, SERVER_TOOL_SCHEMAS, SERVER_TOOL_NAMES } from "../tools/schemas.js";
+import {
+  toolSchemasForCapabilities,
+  SERVER_TOOL_SCHEMAS,
+  SERVER_TOOL_NAMES,
+  CONFIRMATION_PROMPTS,
+} from "../tools/schemas.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
 import { redis, conversationKey, CONVERSATION_TTL_SECONDS } from "../redis.js";
@@ -65,6 +70,22 @@ function rateLimitMessage(err: unknown): string {
 const TOOL_TIMEOUT_MS = 12_000;
 const MAX_TOOL_LOOP_STEPS = 6; // bounded — a misbehaving model can't hang a session forever
 
+// Deliberately simple keyword matching, not another LLM call — this decides
+// whether something destructive/private is about to happen, so it needs to
+// be predictable, not "probably right most of the time" the way tool-call
+// generation itself already isn't (see docs/ARCHITECTURE.md). Unclear
+// defaults to "no" at the call site — same fail-safe default the deleted
+// client-side dialog already had (its cancelId pointed at Deny).
+const YES_WORDS = ["yes", "yeah", "yep", "yup", "sure", "confirm", "confirmed", "okay", "ok", "go ahead", "do it", "please do"];
+const NO_WORDS = ["no", "nope", "nah", "cancel", "stop", "don't", "do not", "never mind", "nevermind"];
+
+function classifyConfirmation(transcript: string): "yes" | "no" | "unclear" {
+  const normalized = transcript.trim().toLowerCase();
+  if (YES_WORDS.some((w) => normalized === w || normalized.startsWith(`${w} `))) return "yes";
+  if (NO_WORDS.some((w) => normalized === w || normalized.startsWith(`${w} `))) return "no";
+  return "unclear";
+}
+
 interface PendingCall {
   resolve: (result: ToolResult) => void;
   timer: NodeJS.Timeout;
@@ -81,6 +102,12 @@ export class Session {
   private audioChunks: Buffer[] = [];
   private readonly pendingCalls = new Map<string, PendingCall>();
   private history: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
+  // Set when a turn pauses on a tool in CONFIRMATION_PROMPTS — the *next*
+  // turn's transcript is treated as the answer to this, not a new request.
+  // Purely in-memory, like pendingCalls: lost on disconnect, which just means
+  // a stale "yes" after a reconnect is treated as a fresh, contextless
+  // utterance rather than an accidental confirmation — never a safety issue.
+  private pendingConfirmation?: { toolCallId: string; name: string; args: unknown };
 
   private constructor(
     private readonly ws: WebSocket,
@@ -225,6 +252,25 @@ export class Session {
         return undefined;
       });
 
+      // This turn's transcript is the answer to a question asked last turn,
+      // not a new request — resolve it before anything else. Whatever
+      // happens (confirmed, declined, or an unclear reply, which counts as
+      // declined), the pending call's tool_call_id gets answered right here
+      // so history stays valid for the next Groq call — see the mid-loop
+      // pause logic below for why that matters.
+      if (this.pendingConfirmation) {
+        const pending = this.pendingConfirmation;
+        this.pendingConfirmation = undefined;
+        const decision = classifyConfirmation(transcript);
+        const result =
+          decision === "yes"
+            ? SERVER_TOOL_NAMES.has(pending.name)
+              ? await this.handleServerTool(pending.name, pending.args, userMessageId)
+              : await this.dispatchToolCall(pending.toolCallId, pending.name, pending.args)
+            : { ok: false, message: "The user did not confirm this action." };
+        this.history.push({ role: "tool", tool_call_id: pending.toolCallId, content: JSON.stringify(result) });
+      }
+
       const relevantMemories = await findRelevantMemories(this.userId, transcript).catch((err) => {
         console.error("[session] findRelevantMemories failed", err);
         return [] as RelevantMemory[];
@@ -246,11 +292,45 @@ export class Session {
           break;
         }
 
+        let awaitingConfirmation = false;
         for (const call of toolCalls) {
+          const confirmationPrompt = CONFIRMATION_PROMPTS[call.name];
+          if (confirmationPrompt) {
+            // Never dispatch a confirmation-gated tool immediately — always
+            // answer its tool_call with a placeholder and let a later turn
+            // (see above) resolve it for real. If two such calls land in
+            // the same batch, only the first becomes resolvable via
+            // pendingConfirmation; the second is simply never run — a
+            // sensitive tool physically cannot execute without going
+            // through this state machine, however the batch is shaped.
+            this.pendingConfirmation ??= { toolCallId: call.id, name: call.name, args: call.args };
+            awaitingConfirmation = true;
+            this.history.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: JSON.stringify({ ok: false, message: "Waiting for the user's confirmation." }),
+            });
+            continue;
+          }
           const result = SERVER_TOOL_NAMES.has(call.name)
             ? await this.handleServerTool(call.name, call.args, userMessageId)
             : await this.dispatchToolCall(call.id, call.name, call.args);
           this.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
+        }
+
+        if (awaitingConfirmation) {
+          // Deterministic, not model-generated — reliable and free (no extra
+          // Groq call), and avoids relying on the model to reliably follow
+          // an "ask, don't call the tool again" instruction. See
+          // docs/ARCHITECTURE.md.
+          const pending = this.pendingConfirmation!;
+          const confirmText = CONFIRMATION_PROMPTS[pending.name]!(pending.args);
+          this.history.push({ role: "assistant", content: confirmText });
+          this.send({ type: "assistant_text", text: confirmText });
+          await appendMessage(this.conversationId, "assistant", confirmText).catch((err) =>
+            console.error("[session] appendMessage(assistant) failed", err)
+          );
+          break;
         }
       }
 

@@ -182,6 +182,18 @@ export const SERVER_TOOL_SCHEMAS: ToolSchema[] = [
 
 export const SERVER_TOOL_NAMES = new Set(SERVER_TOOL_SCHEMAS.map((s) => s.function.name));
 
+// The server-side replacement for what each tool's client-side describe()
+// used to do for the deleted dialog.showMessageBox gate — these three tools
+// now get a spoken confirmation question (see ws/session.ts) instead of a
+// popup. Presence in this map, not a "sensitivity" field, is what makes a
+// tool call pause for confirmation.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const CONFIRMATION_PROMPTS: Partial<Record<string, (args: any) => string>> = {
+  close_app: (args) => `Close ${args?.app ?? "that"}? Say yes to confirm.`,
+  read_clipboard: () => "Share your clipboard with me? Say yes to confirm.",
+  take_screenshot_and_describe: () => "Take a screenshot and share it with me? Say yes to confirm.",
+};
+
 function assertSchemasMatchContract() {
   const schemaNames = GROQ_TOOL_SCHEMAS.map((s) => s.function.name).sort();
   const contractNames = [...TOOL_NAMES].sort();

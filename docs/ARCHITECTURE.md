@@ -39,6 +39,49 @@ OS command for each tool is hardcoded in `agent/src/main/tools/`.
   `server/src/tools/toolNames.ts` — both packages assert their local registry
   matches on startup).
 
+### Confirmation for sensitive tools: spoken, not clicked
+
+Three tools (`close_app`, `read_clipboard`, `take_screenshot_and_describe`)
+need a real checkpoint before they run — closing an app can lose unsaved
+work, and the other two ship potentially private data to a cloud LLM. The
+original design gated these behind a client-side `dialog.showMessageBox`
+Allow/Deny popup. That was replaced after real usage feedback: a voice
+assistant that makes you walk over and click a mouse defeats its own point.
+The replacement is voice confirmation, and it had to move server-side — the
+confirmation now spans two separate turns (the question, then the answer),
+and only the server's `Session` (`server/src/ws/session.ts`) has state that
+survives between turns. `ToolDefinition` (`agent/src/main/tools/types.ts`)
+no longer has a `sensitivity`/`describe` field at all — the client has no
+concept of "this one needs confirmation" anymore.
+
+How it works: `CONFIRMATION_PROMPTS` (`server/src/tools/schemas.ts`) maps a
+tool name to a function producing its spoken question (e.g. `close_app` →
+"Close Chrome? Say yes to confirm."). When the LLM calls a tool in that map,
+`Session.runTurn` never dispatches it — it answers that tool_call with a
+placeholder result (`{ok:false, message:"Waiting for the user's
+confirmation."}`, since every `tool_calls` entry must be answered before the
+next Groq call, protocol-wise), records it on `this.pendingConfirmation`,
+and ends the turn by sending the deterministic question directly as
+`assistant_text` — **not** by asking the model to phrase it via another
+completion call, since that would mean trusting the model to reliably follow
+an "ask, don't call the tool again" instruction, and real testing this
+session already surfaced genuine tool-calling flakiness elsewhere. The
+*next* turn's transcript is checked against `pendingConfirmation` first,
+before anything else: a small deterministic keyword match
+(`classifyConfirmation`) decides yes/no/unclear, unclear counts as no (same
+fail-safe default the old dialog's `cancelId` already had), and only on a
+clear "yes" does the real tool call finally get dispatched. If a single LLM
+turn somehow produces two sensitive calls at once, only the first becomes
+resolvable — the second is simply never run. The safety property this
+guarantees: a sensitive tool physically cannot execute without going through
+this state machine, regardless of how a batch is shaped or how the model
+misbehaves.
+
+`pendingConfirmation` is in-memory on `Session`, not persisted — same as
+`pendingCalls` (the tool round-trip map). A disconnect between the question
+and the answer just means the eventual "yes" is treated as a fresh,
+contextless utterance next time, never as an accidental confirmation.
+
 ### App control: `open_app` / `close_app`
 
 Both read from one whitelist, `agent/src/main/tools/appRegistry.ts` — an app
@@ -49,15 +92,9 @@ Explorer, Settings, and Control Panel are deliberately excluded from
 the whole taskbar/desktop shell, not just one window — this isn't a gap to fill
 in later, it's a permanent exclusion.
 
-`close_app` is the first tool marked `sensitivity: "high"` in
-`ToolDefinition` (`agent/src/main/tools/types.ts`) — that field existed inert
-in v1 anticipating exactly this. `dispatchToolCall`
-(`agent/src/main/tools/index.ts`) now has a real consumer for it: before
-`execute()` runs on any high-sensitivity tool, it blocks on an Allow/Deny
-`dialog.showMessageBox` (message from the tool's optional `describe(args)`,
-e.g. "Close Chrome?"). A denied or dismissed dialog returns a normal
-`{ ok: false }` result without touching the OS. `open_app` stays `"low"` —
-no dialog, same as v1.
+`close_app` is one of the three tools gated by spoken confirmation (see
+"Confirmation for sensitive tools" above) — `open_app` isn't, and runs
+immediately, same as v1.
 
 ### `control_media`
 
@@ -100,20 +137,20 @@ absolute time risks firing at the wrong local hour.
 
 ### `read_clipboard`
 
-The second `sensitivity: "high"` tool, for a different reason than
-`close_app`: this isn't about irreversible damage, it's about not silently
-shipping potentially private clipboard content (passwords, OTPs, anything)
-to a cloud LLM without the user seeing it happen. Same Allow/Deny
-confirmation gate either way — `sensitivity` doesn't distinguish "risky
-because destructive" from "risky because private," and doesn't need to; both
-warrant asking first. Content is truncated to 4,000 characters
+Gated by spoken confirmation for a different reason than `close_app`: this
+isn't about irreversible damage, it's about not silently shipping
+potentially private clipboard content (passwords, OTPs, anything) to a
+cloud LLM without the user knowing. Same mechanism either way — it doesn't
+distinguish "risky because destructive" from "risky because private," and
+doesn't need to; both warrant asking first. Content is truncated to 4,000 characters
 (`agent/src/main/tools/readClipboard.ts`) so a large copied document doesn't
 blow up conversation token usage.
 
 ### `take_screenshot_and_describe`
 
-The most privacy-sensitive tool yet — `sensitivity: "high"`, same Allow/Deny
-gate, but here it's about an actual image leaving the device, not text.
+The most privacy-sensitive tool yet — same spoken-confirmation gate as
+`close_app`/`read_clipboard`, but here it's about an actual image leaving
+the device, not text.
 
 **The image never touches `ToolInvocation`, deliberately.** Every other
 client tool's `ToolResult` flows back over the WS `tool_call`/`tool_result`

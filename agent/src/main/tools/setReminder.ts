@@ -12,7 +12,6 @@ const argsSchema = z.object({
 
 export const setReminderTool: ToolDefinition<{ text: string; delayMinutes: number }> = {
   name: "set_reminder",
-  sensitivity: "low",
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ text, delayMinutes }) {
     addReminder(text, Date.now() + delayMinutes * 60_000);

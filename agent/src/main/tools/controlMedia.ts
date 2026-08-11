@@ -41,7 +41,6 @@ function keybdEventScript(vk: number): string {
 
 export const controlMediaTool: ToolDefinition<{ action: Action }> = {
   name: "control_media",
-  sensitivity: "low",
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ action }) {
     try {
