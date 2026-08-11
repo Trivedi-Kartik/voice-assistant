@@ -125,9 +125,14 @@ captures the screenshot and posts it directly to a dedicated
 `POST /vision/describe` endpoint (`server/src/vision/routes.ts`,
 `requireAuth`-protected) via a new `authManager.describeScreenshot()` method
 — never through the WS protocol. The server calls Groq's vision model
-(`server/src/vision.ts`, currently `llama-3.2-11b-vision-preview` — a single
-named constant, since Groq's "preview" labeling means it may get
-renamed/replaced) and returns only the resulting **text** description. That
+(`server/src/vision.ts`, currently `qwen/qwen3.6-27b` — a single named
+constant, deliberately: the original choice here,
+`llama-3.2-11b-vision-preview`, was already decommissioned by Groq by the
+time this shipped, confirmed via real testing, "model_decommissioned." Groq's
+vision-model lineup has changed twice within this project's lifetime — treat
+this constant as needing a periodic check against
+`console.groq.com/docs/vision`, not a one-time choice) and returns only the
+resulting **text** description. That
 text is the only thing that ever becomes this tool's `ToolResult` and
 re-enters the normal flow — the image itself exists only in that one HTTPS
 request body and briefly in server memory for one Groq call.

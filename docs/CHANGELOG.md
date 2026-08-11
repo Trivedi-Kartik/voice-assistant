@@ -4,6 +4,24 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Fix take_screenshot_and_describe's decommissioned vision model
+
+- **Real bug, confirmed via live testing:** the vision model chosen at
+  increment-4 ship time, `llama-3.2-11b-vision-preview`, had already been
+  decommissioned by Groq (`model_decommissioned` — `console.groq.com/docs/deprecations`).
+  Every screenshot request failed with a 502 from `/vision/describe`.
+  Switched `server/src/vision.ts`'s `VISION_MODEL` constant to
+  `qwen/qwen3.6-27b`, Groq's current production vision model per their
+  vision docs. This is the second time Groq's vision-model lineup has
+  changed within this project's short lifetime — worth treating the
+  constant as needing a periodic check, not a one-time choice.
+- Diagnosing this surfaced that the agent's dev workflow has a real gotcha
+  worth remembering: `agent/`'s main process runs from `tsc -w`-compiled
+  `dist/main/*.js`, and Electron does **not** hot-reload it — only the
+  renderer has Vite HMR. A `git pull` alone, without fully killing and
+  restarting `npm run dev`, silently keeps running stale main-process code
+  with none of whatever was just fixed.
+
 ## 2026-08-04 — Fix zero-arg tool calls failing with a raw Zod error
 
 - **Real bug, found via live testing:** `take_screenshot_and_describe` (and
