@@ -6,7 +6,6 @@ const argsSchema = z.object({ url: z.string().url() });
 
 export const openUrlTool: ToolDefinition<{ url: string }> = {
   name: "open_url",
-  sensitivity: "low",
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ url }) {
     const parsed = new URL(url);

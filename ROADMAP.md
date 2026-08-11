@@ -74,16 +74,26 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
 ### ✅ Increment 4 — `take_screenshot_and_describe` (this build)
 - New tool — captures the primary display, sends it to a dedicated
   `POST /vision/describe` endpoint (`server/src/vision/`), which calls
-  Groq's `llama-3.2-11b-vision-preview` and returns a text description. The
+  Groq's `qwen/qwen3.6-27b` and returns a text description. The
   image deliberately never enters the WS `tool_call` protocol or the
   `ToolInvocation` audit table — only the resulting text does. Third
-  `sensitivity: "high"` tool (the most privacy-sensitive one yet). See
+  privacy-sensitive tool (the most sensitive one yet). See
   `docs/ARCHITECTURE.md` "take_screenshot_and_describe" for the full design,
   including why `/vision`'s Express body-size limit had to be scoped
   per-router rather than raised globally, and why it reuses the same
   daily-turn rate limit the WS loop uses.
 - Primary display only, not every monitor — documented v1 limitation, not
   an oversight.
+
+### ✅ Confirmation moved from a click popup to spoken yes/no (this build)
+- `close_app`, `read_clipboard`, and `take_screenshot_and_describe` no
+  longer gate on a client-side Allow/Deny dialog — changed after real usage
+  feedback that a voice assistant requiring a mouse click defeats its own
+  point. Now the assistant asks out loud and the *next* voice turn resolves
+  it (say "yes" to confirm, anything else cancels). This moved the whole
+  mechanism server-side, into `Session` (`server/src/ws/session.ts`) — see
+  `docs/ARCHITECTURE.md` "Confirmation for sensitive tools" for the full
+  design and its safety invariant.
 
 ### Next
 - `send_email_draft` — blocked on external setup, not just code: needs a

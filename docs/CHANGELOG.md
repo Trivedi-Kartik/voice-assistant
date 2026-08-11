@@ -4,6 +4,39 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Replace click-to-confirm popup with spoken yes/no
+
+- **Changed based on real usage feedback:** `close_app`, `read_clipboard`,
+  and `take_screenshot_and_describe` no longer gate on a client-side
+  `dialog.showMessageBox` Allow/Deny popup — requiring a mouse click defeated
+  the point of a voice-first assistant. Now the assistant asks out loud
+  ("Close Chrome? Say yes to confirm.") and the *next* voice turn resolves
+  it — a clear "yes" runs it for real, anything else (including silence or
+  an unrelated reply) cancels it.
+- This moved the whole mechanism server-side, into `Session`
+  (`server/src/ws/session.ts`): a new `pendingConfirmation` field, a
+  deterministic `classifyConfirmation` keyword match (unclear defaults to
+  "no," same fail-safe the old dialog's `cancelId` already had), and
+  `CONFIRMATION_PROMPTS` (`server/src/tools/schemas.ts`) as the server-side
+  replacement for what each tool's `describe()` used to do. The `sensitivity`
+  and `describe` fields are gone entirely from `ToolDefinition`
+  (`agent/src/main/tools/types.ts`) and every tool file — the client no
+  longer has any concept of "this one needs confirmation."
+- The real constraint this had to respect: every `tool_calls` entry in an
+  assistant message must be answered by a matching `tool`-role message
+  before the next Groq call, so "pausing" still answers the call immediately
+  with a placeholder, and the spoken question is injected as a separate,
+  hand-written assistant message — deliberately not something asked of the
+  model via another completion call, since real testing this session
+  already showed Groq's tool-calling isn't reliable enough to trust with an
+  "ask, don't call the tool again" instruction.
+- Safety invariant preserved despite the speed-up: a sensitive tool call
+  cannot execute without going through this state machine, no matter how a
+  batch of tool calls is shaped — see `docs/ARCHITECTURE.md` "Confirmation
+  for sensitive tools."
+- **Not yet verified:** a real two-turn voice exchange on Windows (ask →
+  confirm → runs; ask → decline → doesn't run).
+
 ## 2026-08-11 — Fix take_screenshot_and_describe's decommissioned vision model
 
 - **Real bug, confirmed via live testing:** the vision model chosen at

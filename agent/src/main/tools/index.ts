@@ -1,4 +1,3 @@
-import { BrowserWindow, dialog } from "electron";
 import { ZodError } from "zod";
 import type { ToolDefinition, ToolResult } from "./types.js";
 import { openAppTool } from "./openApp.js";
@@ -49,9 +48,11 @@ export async function dispatchToolCall(name: string, rawArgs: unknown): Promise<
 
   try {
     const args = tool.parseArgs(rawArgs);
-    if (tool.sensitivity === "high" && !(await confirmHighSensitivity(tool, args))) {
-      return { ok: false, message: "The user didn't approve this action." };
-    }
+    // Confirmation for sensitive tools (close_app, read_clipboard,
+    // take_screenshot_and_describe) now happens server-side, as a spoken
+    // question resolved by the user's next voice turn — see
+    // server/src/ws/session.ts and docs/ARCHITECTURE.md. By the time a
+    // tool_call reaches here, it's already been confirmed.
     return await Promise.race([
       tool.execute(args),
       new Promise<ToolResult>((resolve) =>
@@ -72,15 +73,4 @@ export async function dispatchToolCall(name: string, rawArgs: unknown): Promise<
           : "Tool failed with an unexpected error.";
     return { ok: false, message };
   }
-}
-
-// Blocking Allow/Deny gate for 'high' sensitivity tools (first: close_app) —
-// runs before execute() so a denied/dismissed dialog never touches the OS.
-// See docs/ARCHITECTURE.md.
-async function confirmHighSensitivity(tool: ToolDefinition<unknown>, args: unknown): Promise<boolean> {
-  const parent = BrowserWindow.getFocusedWindow();
-  const message = tool.describe?.(args) ?? `Allow "${tool.name}"?`;
-  const options = { type: "question" as const, buttons: ["Allow", "Deny"], defaultId: 1, cancelId: 1, message };
-  const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
-  return response === 0;
 }

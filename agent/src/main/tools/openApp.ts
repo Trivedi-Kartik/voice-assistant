@@ -10,7 +10,6 @@ const argsSchema = z.object({ app: z.string() });
 
 export const openAppTool: ToolDefinition<{ app: string }> = {
   name: "open_app",
-  sensitivity: "low",
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ app }) {
     const entry = lookupApp(app);

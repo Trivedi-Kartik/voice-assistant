@@ -27,8 +27,10 @@ const argsSchema = z.object({});
 
 export const takeScreenshotTool: ToolDefinition<Record<string, never>> = {
   name: "take_screenshot_and_describe",
-  sensitivity: "high",
-  describe: () => "Take a screenshot of your screen and share it with the assistant?",
+  // Gated by a spoken confirmation the user resolves on the next turn (see
+  // server/src/ws/session.ts, CONFIRMATION_PROMPTS in
+  // server/src/tools/schemas.ts) — by the time this execute() runs, it's
+  // already been confirmed.
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute() {
     // Split into two try/catches, not one — capture (local, Electron) and
