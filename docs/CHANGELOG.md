@@ -4,6 +4,29 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Fix spoken confirmation never actually resolving
+
+- **Real bug, confirmed via a live screenshot:** saying "yes" to a
+  confirmation question (e.g. "Close chrome? Say yes to confirm.") never
+  actually closed the app — it just re-asked the same question forever, even
+  after repeating "yes" multiple times. Two compounding causes:
+  1. `classifyConfirmation` never stripped trailing punctuation. Whisper
+     transcribes "Yes." (with a period), which matched neither `=== "yes"`
+     nor `startsWith("yes ")` — every plain "yes" was silently misclassified
+     as unclear, which defaults to declined.
+  2. Deeper issue: even on decline, the code re-answered the *original*
+     `tool_call_id` from the question-asking turn — but that call was
+     already fully closed out with a placeholder in that same turn.
+     Re-answering an already-answered tool call, with a new user message now
+     sandwiched in between, is an invalid message sequence for Groq's chat
+     format (a `tool` message must immediately follow the assistant message
+     with the matching `tool_calls`) — almost certainly why the model kept
+     re-issuing the same call instead of reacting to "yes" sensibly.
+- Fixed: `classifyConfirmation` strips trailing punctuation before matching.
+  On a real "yes," `server/src/ws/session.ts` now mints a brand-new,
+  self-contained `tool_calls`/`tool` exchange (fresh call ID, no reference to
+  the old one) instead of trying to reuse the closed-out original.
+
 ## 2026-08-11 — Karvix didn't know its own name; add an in-app "what can I ask" screen
 
 - **Real bug, found via live testing:** greeting the assistant by name

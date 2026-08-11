@@ -68,9 +68,17 @@ an "ask, don't call the tool again" instruction, and real testing this
 session already surfaced genuine tool-calling flakiness elsewhere. The
 *next* turn's transcript is checked against `pendingConfirmation` first,
 before anything else: a small deterministic keyword match
-(`classifyConfirmation`) decides yes/no/unclear, unclear counts as no (same
+(`classifyConfirmation`, punctuation-stripped — Whisper transcripts almost
+always end in one) decides yes/no/unclear, unclear counts as no (same
 fail-safe default the old dialog's `cancelId` already had), and only on a
-clear "yes" does the real tool call finally get dispatched. If a single LLM
+clear "yes" does the real tool call finally get dispatched — as a **brand
+new, self-contained** `tool_calls`/`tool` exchange with a freshly minted call
+ID, never by reusing the original call's ID. That distinction matters and
+was a real bug once: the original call was already fully closed out (by the
+placeholder above) in the turn that asked the question, so re-answering it
+later — with a user message now sandwiched in between — is an invalid
+message sequence for Groq's chat format and caused the model to just
+re-issue the same call forever instead of reacting to "yes." If a single LLM
 turn somehow produces two sensitive calls at once, only the first becomes
 resolvable — the second is simply never run. The safety property this
 guarantees: a sensitive tool physically cannot execute without going through

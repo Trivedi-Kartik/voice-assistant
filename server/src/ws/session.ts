@@ -87,7 +87,11 @@ const YES_WORDS = ["yes", "yeah", "yep", "yup", "sure", "confirm", "confirmed", 
 const NO_WORDS = ["no", "nope", "nah", "cancel", "stop", "don't", "do not", "never mind", "nevermind"];
 
 function classifyConfirmation(transcript: string): "yes" | "no" | "unclear" {
-  const normalized = transcript.trim().toLowerCase();
+  // Confirmed via real testing: Whisper transcripts almost always carry
+  // trailing punctuation ("Yes.") — without stripping it, that never matched
+  // "yes" exactly and never matched "yes " (space) either, so every plain
+  // "Yes." was silently misclassified as unclear/declined.
+  const normalized = transcript.trim().toLowerCase().replace(/[.!?,]+$/, "");
   if (YES_WORDS.some((w) => normalized === w || normalized.startsWith(`${w} `))) return "yes";
   if (NO_WORDS.some((w) => normalized === w || normalized.startsWith(`${w} `))) return "no";
   return "unclear";
@@ -114,7 +118,7 @@ export class Session {
   // Purely in-memory, like pendingCalls: lost on disconnect, which just means
   // a stale "yes" after a reconnect is treated as a fresh, contextless
   // utterance rather than an accidental confirmation — never a safety issue.
-  private pendingConfirmation?: { toolCallId: string; name: string; args: unknown };
+  private pendingConfirmation?: { name: string; args: unknown };
 
   private constructor(
     private readonly ws: WebSocket,
@@ -260,22 +264,37 @@ export class Session {
       });
 
       // This turn's transcript is the answer to a question asked last turn,
-      // not a new request — resolve it before anything else. Whatever
-      // happens (confirmed, declined, or an unclear reply, which counts as
-      // declined), the pending call's tool_call_id gets answered right here
-      // so history stays valid for the next Groq call — see the mid-loop
-      // pause logic below for why that matters.
+      // not a new request — resolve it before anything else.
+      //
+      // Real bug, found via live testing: the previous version of this
+      // re-answered the ORIGINAL tool_call_id from the question-asking turn
+      // — but that call was already fully closed out then (see the
+      // placeholder push in the mid-loop pause logic below). Re-answering an
+      // already-answered call, with a fresh user message now sandwiched in
+      // between, is an invalid message sequence (a `tool` message must
+      // immediately follow the assistant message with the matching
+      // `tool_calls`, not appear after unrelated turns) — which is almost
+      // certainly why the model kept re-issuing the same call instead of
+      // reacting sensibly to "yes." On a real confirmation, mint a
+      // brand-new, self-contained tool_calls/tool exchange instead — no
+      // reference to the old call at all. On decline, there's nothing to
+      // answer: nothing was called, so just let the plain "no" flow into the
+      // conversation as a normal user turn below.
       if (this.pendingConfirmation) {
         const pending = this.pendingConfirmation;
         this.pendingConfirmation = undefined;
-        const decision = classifyConfirmation(transcript);
-        const result =
-          decision === "yes"
-            ? SERVER_TOOL_NAMES.has(pending.name)
-              ? await this.handleServerTool(pending.name, pending.args, userMessageId)
-              : await this.dispatchToolCall(pending.toolCallId, pending.name, pending.args)
-            : { ok: false, message: "The user did not confirm this action." };
-        this.history.push({ role: "tool", tool_call_id: pending.toolCallId, content: JSON.stringify(result) });
+        if (classifyConfirmation(transcript) === "yes") {
+          const callId = uuid();
+          this.history.push({
+            role: "assistant",
+            content: "",
+            tool_calls: [{ id: callId, type: "function", function: { name: pending.name, arguments: JSON.stringify(pending.args) } }],
+          });
+          const result = SERVER_TOOL_NAMES.has(pending.name)
+            ? await this.handleServerTool(pending.name, pending.args, userMessageId)
+            : await this.dispatchToolCall(callId, pending.name, pending.args);
+          this.history.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(result) });
+        }
       }
 
       const relevantMemories = await findRelevantMemories(this.userId, transcript).catch((err) => {
@@ -310,7 +329,7 @@ export class Session {
             // pendingConfirmation; the second is simply never run — a
             // sensitive tool physically cannot execute without going
             // through this state machine, however the batch is shaped.
-            this.pendingConfirmation ??= { toolCallId: call.id, name: call.name, args: call.args };
+            this.pendingConfirmation ??= { name: call.name, args: call.args };
             awaitingConfirmation = true;
             this.history.push({
               role: "tool",
