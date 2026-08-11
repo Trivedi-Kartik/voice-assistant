@@ -103,7 +103,11 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   that's the point of the name.
 - Each new tool still follows the strict-whitelist rule from `docs/ARCHITECTURE.md`,
   ships as its own reviewed increment (not a single "Phase 3 dump"), and gets
-  a matching entry in `docs/CAPABILITIES.md` so users know it exists.
+  a matching entry in **both** `docs/CAPABILITIES.md` (repo-facing) and
+  `agent/src/renderer/components/HelpPanel.tsx`'s `CAPABILITIES` array
+  (the same thing, but inside the actual app — an installed-app user never
+  sees the repo). Also update `App.tsx`'s `TOOL_LABELS` map so the new
+  tool's activity chip shows a real label instead of its raw snake_case name.
 
 ## Phase 4 — Better TTS
 - Swap browser `SpeechSynthesis` for **Piper** (self-hosted, free, more natural) or

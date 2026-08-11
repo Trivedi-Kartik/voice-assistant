@@ -25,8 +25,15 @@ import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../me
 // structured tool-calling mechanism — that text then gets spoken/shown to the
 // user verbatim. sanitizeAssistantText() below is the defensive backstop for
 // when a model does this anyway.
+// The rename to "Karvix" (see docs/CHANGELOG.md) only ever touched branding
+// surfaces (window title, tray, package.json) — this prompt was never
+// updated, so the model had no idea its own name was Karvix. Confirmed via
+// real usage: greeting it by name got a confused/generic reply since
+// "Karvix" was just an unexplained word to it.
 const SYSTEM_PROMPT =
-  "You are a helpful voice assistant running on the user's device. Replies are spoken " +
+  "You are Karvix, a helpful voice assistant running on the user's device. If the user " +
+  "greets you or addresses you by name, respond naturally as yourself, not as if asked " +
+  "about a third party. Replies are spoken " +
   "aloud via text-to-speech, so: keep replies short and conversational, like natural " +
   "speech. Use the available tools to actually perform actions rather than just " +
   "describing what you'd do or asking the user to do it themselves. Never mention tool " +
