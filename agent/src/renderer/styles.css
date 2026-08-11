@@ -172,3 +172,8 @@ input, button {
 button { cursor: pointer; background: #2a5db0; border: none; }
 button:disabled { opacity: 0.6; cursor: default; }
 .settings-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.7); padding: 24px; }
+.help-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.7); padding: 24px; overflow-y: auto; }
+.help-list { list-style: none; margin: 16px 0; padding: 0; }
+.help-item { margin-bottom: 14px; }
+.help-examples { color: #8ab4f8; font-size: 13px; }
+.help-desc { color: #c7cdd6; font-size: 13px; margin-top: 2px; line-height: 1.4; }

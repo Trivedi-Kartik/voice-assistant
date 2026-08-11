@@ -7,13 +7,21 @@ import { LoginScreen } from "./components/LoginScreen";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { ConversationView } from "./components/ConversationView";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { HelpPanel } from "./components/HelpPanel";
 import { VoiceOrb } from "./components/VoiceOrb";
 import { MicButton } from "./components/MicButton";
 
+// Was missing 5 of 8 tools — stale since each was added without this map
+// being updated. Keep in sync with server/src/tools/toolNames.ts.
 const TOOL_LABELS: Record<string, string> = {
   open_app: "Open app",
+  close_app: "Close app",
   web_search: "Web search",
   open_url: "Open URL",
+  control_media: "Media control",
+  set_reminder: "Reminder",
+  read_clipboard: "Read clipboard",
+  take_screenshot_and_describe: "Screenshot",
 };
 
 function describeTool(name: string): string {
@@ -23,6 +31,7 @@ function describeTool(name: string): string {
 export function App() {
   const [consented, setConsented] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [micPermissionWarning, setMicPermissionWarning] = useState(false);
 
   const {
@@ -139,6 +148,9 @@ export function App() {
           connectionStatus={connectionStatus}
           onRetry={() => window.jarvis.connection.retryNow()}
         />
+        <button className="link-button" onClick={() => setShowHelp(true)}>
+          What can I ask?
+        </button>
         <button className="link-button" onClick={() => setShowSettings(true)}>
           Settings
         </button>
@@ -163,6 +175,7 @@ export function App() {
       <ConversationView turns={turns} />
 
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}
     </div>
   );
 }

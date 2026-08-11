@@ -4,6 +4,27 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Karvix didn't know its own name; add an in-app "what can I ask" screen
+
+- **Real bug, found via live testing:** greeting the assistant by name
+  ("Hi Karvix") got a confused/generic reply. Root cause: the product's
+  rename to Karvix only ever touched branding surfaces (window title, tray,
+  `package.json`) — the LLM's system prompt (`server/src/ws/session.ts`)
+  still just said "You are a helpful voice assistant," never mentioning the
+  name at all. Fixed: the prompt now says "You are Karvix" and explicitly
+  tells the model to respond naturally when greeted by name, not as if asked
+  about a third party.
+- **New: an in-app "What can I ask?" screen**
+  (`agent/src/renderer/components/HelpPanel.tsx`), opened from the header
+  next to Settings. `docs/CAPABILITIES.md` lives in the repo, which an actual
+  installed-app user never sees — this is the same content, written for an
+  end user, inside the app itself. `ROADMAP.md`'s per-tool checklist now
+  calls for updating both, not just the repo doc.
+- Also fixed while touching `App.tsx`: `TOOL_LABELS` (used for the
+  tool-activity chips) only had 3 of the 8 tools that exist today — every
+  tool added since Phase 3 increment 1 forgot to add its label, so newer
+  tools' chips showed a raw snake_case name instead of a real label.
+
 ## 2026-08-11 — Replace click-to-confirm popup with spoken yes/no
 
 - **Changed based on real usage feedback:** `close_app`, `read_clipboard`,
