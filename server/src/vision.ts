@@ -1,10 +1,11 @@
 import Groq from "groq-sdk";
 
-// Groq's own "preview" labeling for vision models means this may get
-// renamed/replaced later — a single named constant makes that a one-line
-// fix, same pattern as MODEL in llm.ts. See docs/ARCHITECTURE.md
-// "take_screenshot_and_describe".
-const VISION_MODEL = "llama-3.2-11b-vision-preview";
+// Confirmed via real testing: the original choice here (llama-3.2-11b-vision-preview)
+// was already decommissioned by Groq by the time this shipped ("model_decommissioned").
+// Groq's vision-model lineup has genuinely changed twice within this project's
+// lifetime — a single named constant makes the next swap a one-line fix.
+// Current per Groq's vision docs (console.groq.com/docs/vision): production status.
+const VISION_MODEL = "qwen/qwen3.6-27b";
 
 const DESCRIBE_PROMPT =
   "Describe what's visible in this screenshot in a few sentences, in plain conversational language — this " +
