@@ -96,10 +96,11 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   design and its safety invariant.
 
 ### Next
-- `send_email_draft` — blocked on external setup, not just code: needs a
-  Google Cloud OAuth client (ID/secret) the user has to create themselves
-  (setup steps already given), plus its own mini privacy review before
-  shipping, per this file's own original framing. Drafts only, never sends —
+- `send_email_draft` — **not paid**, the Gmail API itself is free at this
+  usage volume; blocked on external *setup*, not cost: needs a Google Cloud
+  OAuth client (ID/secret) the user has to create themselves (setup steps
+  already given), plus its own mini privacy review before shipping, per
+  this file's own original framing. Drafts only, never sends —
   that's the point of the name.
 - Each new tool still follows the strict-whitelist rule from `docs/ARCHITECTURE.md`,
   ships as its own reviewed increment (not a single "Phase 3 dump"), and gets
@@ -109,16 +110,40 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   sees the repo). Also update `App.tsx`'s `TOOL_LABELS` map so the new
   tool's activity chip shows a real label instead of its raw snake_case name.
 
-## Phase 4 — Better TTS
-- Swap browser `SpeechSynthesis` for **Piper** (self-hosted, free, more natural) or
-  ElevenLabs free tier, behind the existing `TtsEngine` seam
-  (`agent/src/renderer/audio/ttsPlayback.ts`) — no protocol/UI rewrite needed.
+## Phase 4 — Better TTS (on hold — paused, not started)
+- **Piper only** (self-hosted, free, runs client-side, no per-character cost)
+  behind the existing `TtsEngine` seam (`agent/src/renderer/audio/ttsPlayback.ts`)
+  — no protocol/UI rewrite needed. `assistant_audio` in the WS protocol was
+  only ever needed for a *server-generated* audio path, which Piper-on-the-client
+  doesn't use at all.
+- **Eliminated during a 2026-08-11 cost audit, do not revisit without a plan
+  for the cost:** ElevenLabs (free tier is ~10 min/month *total*, shared
+  across every user on one key, and carries no commercial license — a bad
+  fit for a multi-tenant free product without a BYOK escape valve or someone
+  paying for a plan) and Groq TTS/Orpheus (real per-character cost, ~$22/1M
+  characters, and Preview-tier on Groq's side — the same status the vision
+  model had right before it got decommissioned mid-project).
 - **Why after tools, not before:** upgrades perceived quality once people are
   already using it daily; low value if nobody's retained yet.
+- **On hold:** paused by explicit choice, not started — pick this back up
+  when there's bandwidth to actually scope the Piper packaging work
+  (bundling a Windows binary + voice model into the installer).
 
 ## Phase 5 — Wake word (hands-free)
-- Integrate Porcupine (free tier, offline, low-latency) via the
+- **`openWakeWord`** (free, open-source, no user caps) via the
   `WakeWordTriggerSource` seam already defined (`agent/src/main/wakeword/`).
+  Needs a **custom-trained** "Hey Karvix" model via openWakeWord's own free
+  training pipeline — not one of its pre-built demo keywords ("Alexa," "Hey
+  Jarvis"), whose official pre-trained weights are CC-BY-NC-SA (non-commercial,
+  trained on datasets with restrictive licensing) and can't be shipped in a
+  real product. A model trained from scratch on your own data doesn't carry
+  that restriction — one-time training-compute cost, not a recurring fee.
+- **Eliminated during the same 2026-08-11 cost audit:** Porcupine (the
+  original plan) — its free tier caps out at 3 active users/month *total*,
+  useless past early testing for a real multi-tenant product, and a custom
+  wake word specifically requires its paid Enterprise tier (starts at
+  $6,000/year). openWakeWord doesn't gate custom keywords behind payment at
+  all, which also happens to be exactly what this phase needs anyway.
 - Keep the hotkey as a fallback/manual override.
 - **Why this late:** always-on listening is a bigger consent/privacy surface on a
   hosted multi-tenant product than push-to-talk — do this after trust is earned,
