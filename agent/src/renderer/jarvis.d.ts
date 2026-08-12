@@ -38,7 +38,7 @@ export interface JarvisApi {
     openMicSettings(): void;
   };
   customApps: {
-    list(): Promise<{ name: string; exePath: string; processName: string }[]>;
+    list(): Promise<{ name: string; openCommand: string; processName?: string }[]>;
     remove(name: string): Promise<void>;
   };
 }

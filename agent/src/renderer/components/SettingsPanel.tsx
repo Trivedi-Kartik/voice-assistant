@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 
 interface CustomApp {
   name: string;
-  exePath: string;
-  processName: string;
+  openCommand: string;
+  processName?: string;
 }
 
 // BYOK escape valve: lets a user who's hit the shared daily cap add their own Groq

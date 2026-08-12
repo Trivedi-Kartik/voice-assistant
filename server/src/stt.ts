@@ -21,6 +21,14 @@ export async function transcribeAudio(apiKey: string, audioBuffer: Buffer): Prom
       const transcription = await groq.audio.transcriptions.create({
         file: await toFile(audioBuffer, "utterance.webm"),
         model: "whisper-large-v3",
+        // Real bug, reported from live use: with no language hint, Whisper
+        // auto-detects the spoken language from the audio — and that
+        // detection can misfire on accented English (a known Whisper
+        // failure mode), producing a transcript in an entirely different
+        // language/script instead of English. Karvix is English-only
+        // everywhere else (system prompt, docs, UI) — force it explicitly
+        // rather than trusting per-utterance detection.
+        language: "en",
       });
       return transcription.text.trim();
     } catch (err) {

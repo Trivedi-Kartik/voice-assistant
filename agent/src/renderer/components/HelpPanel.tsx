@@ -75,7 +75,7 @@ const GROUPS: CapabilityGroup[] = [
       {
         examples: ['"Add Photoshop as an app I can open"'],
         description:
-          "Opens a file picker so you pick the real program yourself — nothing is ever added without you selecting it. Then open/close it by name like any built-in app. Manage what you've added in Settings.",
+          "Checks your installed apps first (works for Microsoft Store apps too), or opens a file picker if it can't find a clear match — nothing is ever added without you confirming or selecting it. Store apps can only be opened this way, not closed. Manage what you've added in Settings.",
         confirms: true,
       },
     ],

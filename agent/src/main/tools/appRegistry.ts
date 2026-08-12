@@ -78,7 +78,7 @@ const ALIASES: Record<string, string> = {
 export function lookupApp(name: string): AppEntry | undefined {
   const key = name.toLowerCase().trim();
   const custom = findCustomApp(key);
-  if (custom) return { openCommand: custom.exePath, processName: custom.processName };
+  if (custom) return { openCommand: custom.openCommand, processName: custom.processName };
   return REGISTRY[key] ?? REGISTRY[ALIASES[key] ?? ""];
 }
 

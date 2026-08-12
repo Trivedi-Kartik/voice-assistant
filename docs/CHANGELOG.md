@@ -4,6 +4,39 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Fix add_custom_app on Microsoft Store apps; force English STT
+
+- **Real bug, reported from live use:** adding a Microsoft Store app (e.g.
+  ChatGPT) via `add_custom_app` silently added the wrong thing — saying
+  "open chatgpt" afterward opened the Microsoft Store instead of the app.
+  Root cause: Store/UWP apps live in a protected folder a file picker can't
+  properly browse into or select from, so browsing for one landed on
+  something that redirects to the Store rather than the real app.
+- Fixed by resolving through `Get-StartApps` first — Windows' own list of
+  every installed Start Menu entry, traditional and Store apps alike — via
+  a **fixed, parameter-less** PowerShell command; the spoken name is only
+  ever compared against the returned list in plain JS, never interpolated
+  into the command. Only falls back to the file picker if there's no
+  unambiguous match. A Store app's `AppID` (`"<PackageFamilyName>!<AppId>"`)
+  flows through the *exact same* `cmd.exe /c start` mechanism `openApp.ts`
+  already uses for a real exe path — zero execution-side branching needed.
+  Store apps get no `processName` (same "open-only" convention as File
+  Explorer) since a UWP AppID isn't a real process name to give `taskkill`.
+- **Second real bug, reported in the same message:** voice-to-text was
+  occasionally transcribing English speech into an entirely different
+  language. Root cause: `server/src/stt.ts` never told Whisper what
+  language to expect, so it auto-detected per utterance — a known Whisper
+  failure mode on accented English. Fixed with a one-line `language: "en"`
+  on the transcription call, since Karvix is English-only everywhere else
+  already (system prompt, docs, UI).
+- Renamed `CustomApp.exePath` → `openCommand` (now holds either a real path
+  or a `shell:AppsFolder\...` string) and made `processName` optional,
+  matching `appRegistry.ts`'s existing `AppEntry` shape exactly.
+- **Not yet verified:** the real `Get-StartApps` resolution and the STT fix
+  — this dev environment is Linux, needs a pass on the user's Windows
+  machine. If you already added "chatgpt" incorrectly before this fix,
+  remove it in Settings → "My apps" and add it again.
+
 ## 2026-08-11 — Fix login/signup: the *previous* responsive fix was incomplete
 
 - **Real bug, reported after the last fix shipped:** the earlier
