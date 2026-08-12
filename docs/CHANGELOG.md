@@ -4,6 +4,22 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Fix login/signup not scaling when the window is maximized
+
+- **Real bug, reported from live use:** the redesigned auth card looked
+  fine at the default window size but stayed pinned to a small fixed size
+  when the window was maximized on a larger screen. Two separate hardcoded
+  values were responsible: `.auth-card`'s `max-width` was a flat `340px`
+  (never grew regardless of available space), and `VoiceOrb`'s size on the
+  login screen was a fixed `84px` passed in via inline JS from a `size`
+  prop, not tied to viewport size at all.
+- Fixed by switching both to `clamp()`-based sizing that scales with the
+  window: `.auth-card`/`.consent-screen`'s card, and `VoiceOrb`'s two size
+  variants (`orb-wrap-main`/`orb-wrap-small`, replacing the old numeric
+  `size` prop entirely). Card typography (wordmark, subtitle) scales with it
+  too, so it reads as one proportional composition instead of a fixed-size
+  card floating in empty space on a large screen.
+
 ## 2026-08-11 — Visual redesign: glassmorphic, signal-gradient, AI-styled orb
 
 - **Whole-app visual redesign**, following an approved direction mockup —

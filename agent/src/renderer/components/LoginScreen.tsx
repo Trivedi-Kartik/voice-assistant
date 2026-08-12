@@ -31,7 +31,7 @@ export function LoginScreen() {
   return (
     <div className="login-screen">
       <div className="glass auth-card">
-        <VoiceOrb state="idle" size={84} />
+        <VoiceOrb state="idle" variant="small" />
         <div className="wordmark">Karvix</div>
         <p className="subtitle">Sign in to talk to your assistant.</p>
 
