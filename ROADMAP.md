@@ -124,6 +124,36 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   sees the repo). Also update `App.tsx`'s `TOOL_LABELS` map so the new
   tool's activity chip shows a real label instead of its raw snake_case name.
 
+## Linux compatibility (cross-cutting, started — not a numbered phase)
+Karvix was Windows-only through Phase 3. Auditing what actually needed
+Windows-specific code (not assumed): most tools already turned out to be
+standard cross-platform Electron APIs. Landing incrementally, same pattern
+as Phase 3 — see `docs/ARCHITECTURE.md` "Linux compatibility" for the full
+design.
+
+### ✅ Increment 1 — `open_app` / `close_app` (this build)
+- Platform-dispatch split (`appRegistry.win/linux.ts`, `appExec.win/linux.ts`)
+  behind a thin dispatcher — `openApp.ts`/`closeApp.ts` stay fully
+  platform-agnostic. Real correctness point, not just "swap the command":
+  opening uses `spawn(...).unref()` on Linux, not `execFile()`, since
+  `execFile` would hang the tool call until the launched GUI app itself
+  exits. Also fixed a hardcoded `platform: "windows"` string that was wrong
+  on every non-Windows device regardless of this increment.
+- Linux app list is explicitly smaller and unverified compared to Windows'
+  — no real Linux desktop to test against in this dev environment, and
+  several Windows apps (Word/Excel/PowerPoint, WhatsApp, classic Teams)
+  have no honest Linux equivalent to map to.
+
+### Next
+- `control_media` on Linux — needs `playerctl`/`pactl`, external packages
+  the user's distro may not already have; a real decision point (bundle a
+  check/install prompt? require them?), not a quick swap.
+- `add_custom_app` on Linux — needs `.desktop` file discovery (XDG
+  application directories) instead of `Get-StartApps`/Store AppIDs — a
+  different-shaped resolution problem.
+- Linux packaging (`electron-builder.yml` is `win:`-only today) — only
+  needed once actually distributing a Linux build, not for `npm run dev`.
+
 ## Phase 4 — Better TTS (on hold — paused, not started)
 - **Piper only** (self-hosted, free, runs client-side, no per-character cost)
   behind the existing `TtsEngine` seam (`agent/src/renderer/audio/ttsPlayback.ts`)

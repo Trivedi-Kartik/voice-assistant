@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { z } from "zod";
 import type { ToolDefinition } from "./types.js";
 import { lookupApp } from "./appRegistry.js";
-
-const execFileAsync = promisify(execFile);
+import { closeViaPlatform } from "./appExec.js";
 
 const argsSchema = z.object({ app: z.string() });
 
@@ -21,12 +18,9 @@ export const closeAppTool: ToolDefinition<{ app: string }> = {
     if (!entry?.processName) {
       return { ok: false, message: `"${app}" can't be closed this way.` };
     }
-    try {
-      // Fixed argv passed to execFile — never a raw interpolated string passed to exec().
-      await execFileAsync("taskkill", ["/IM", entry.processName, "/F"]);
-      return { ok: true, message: `Closed ${app}.` };
-    } catch {
-      return { ok: false, message: `${app} doesn't seem to be running.` };
-    }
+    const closed = await closeViaPlatform(entry.processName);
+    return closed
+      ? { ok: true, message: `Closed ${app}.` }
+      : { ok: false, message: `${app} doesn't seem to be running.` };
   },
 };

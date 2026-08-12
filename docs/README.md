@@ -24,7 +24,7 @@ comes back to you.
  [You speak]
       │
       ▼
- Electron Client (Windows) — login, hotkey, mic capture, TTS, tool execution
+ Electron Client (Windows, Linux — best-effort) — login, hotkey, mic capture, TTS, tool execution
       │  wss:// (authenticated per-user)
       ▼
  Node/TS Backend on Fly.io — auth, per-user session, Groq STT + tool-calling LLM
@@ -51,7 +51,7 @@ karvix/
 │       ├── tools/schemas.ts    tool schemas offered to the LLM
 │       ├── stt.ts / llm.ts     Groq Whisper + Llama 3.3 tool-calling
 │       └── rateLimit.ts        shared-key daily cap + BYOK bypass
-└── agent/                ← the "hands" — Electron app (Windows)
+└── agent/                ← the "hands" — Electron app (Windows, Linux — best-effort)
     └── src/
         ├── main/            auth, WS connection, hotkey, tool execution, tray
         ├── preload/         the only bridge into the renderer

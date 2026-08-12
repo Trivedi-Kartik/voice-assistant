@@ -43,6 +43,13 @@ export const controlMediaTool: ToolDefinition<{ action: Action }> = {
   name: "control_media",
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ action }) {
+    // Windows-only (PowerShell/user32.dll) — deviceCapabilities.ts already
+    // excludes this tool from non-Windows devices, so the LLM should never
+    // call it there at all. This is defense in depth, not the primary
+    // guard, in case a stale capability list ever lets one through anyway.
+    if (process.platform !== "win32") {
+      return { ok: false, message: "Media control isn't supported on this device yet." };
+    }
     try {
       // Fixed argv passed to execFile — the only variable part of the script
       // string is the VK integer, always one of the 7 fixed values above.

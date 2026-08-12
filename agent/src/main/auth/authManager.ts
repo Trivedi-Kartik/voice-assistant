@@ -4,6 +4,16 @@ import { DEVICE_CAPABILITIES } from "../deviceCapabilities.js";
 
 const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "http://localhost:8080";
 
+// Was hardcoded to "windows" regardless of the actual OS — harmless while
+// the client only ran on Windows, but wrong once Linux support landed.
+// Matches server/src/auth/routes.ts's credentialsSchema platform enum,
+// which has always accepted "linux".
+function currentPlatform(): "windows" | "mac" | "linux" {
+  if (process.platform === "darwin") return "mac";
+  if (process.platform === "linux") return "linux";
+  return "windows";
+}
+
 interface TokenResponse {
   accessToken: string;
   refreshToken: string;
@@ -107,7 +117,7 @@ class AuthManager {
         password,
         deviceId: getDeviceId(),
         deviceName: getDeviceName(),
-        platform: "windows",
+        platform: currentPlatform(),
         capabilities: DEVICE_CAPABILITIES,
       }),
     });
