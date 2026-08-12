@@ -19,11 +19,15 @@ const STATE_COLORS: Record<MicState, [string, string, string]> = {
 // constellation. Replaces the old <canvas> + requestAnimationFrame
 // particle-ring implementation entirely: the whole motif is rotation/
 // opacity/scale keyframes, no per-frame JS math needed.
-export function VoiceOrb({ state, size = 220 }: { state: MicState; size?: number }) {
+//
+// Sized via a CSS class (clamp(), see .orb-wrap-main/.orb-wrap-small in
+// styles.css), not a fixed pixel prop — a hardcoded size never adapted when
+// the window was resized/maximized, confirmed as a real reported bug.
+export function VoiceOrb({ state, variant = "main" }: { state: MicState; variant?: "main" | "small" }) {
   const [c1, c2, c3] = STATE_COLORS[state];
-  const style = { "--orb-size": `${size}px`, "--c1": c1, "--c2": c2, "--c3": c3 } as React.CSSProperties;
+  const style = { "--c1": c1, "--c2": c2, "--c3": c3 } as React.CSSProperties;
   return (
-    <div className={`orb-wrap${state !== "idle" ? " active" : ""}`} style={style}>
+    <div className={`orb-wrap orb-wrap-${variant}${state !== "idle" ? " active" : ""}`} style={style}>
       <div className="orb-glow" />
       <div className="orb-ring" />
       <div className="orb-sweep" />

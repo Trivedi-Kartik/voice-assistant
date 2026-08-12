@@ -100,16 +100,26 @@ body {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 32px 20px;
 }
-.consent-screen.glass { max-width: 380px; padding: 32px 30px; text-align: left; }
-.consent-screen h1 { font-size: 20px; margin: 0 0 14px; }
-.consent-screen ul { padding-left: 18px; margin: 0 0 22px; color: var(--text-muted); font-size: 13.5px; line-height: 1.55; }
+/* clamp(), not a fixed max-width — confirmed real bug: a hardcoded 340px
+   cap meant these cards stayed the same small size no matter how large the
+   window got when maximized. Grows with the viewport (up to a sane ceiling
+   so it doesn't stretch absurdly wide on an ultrawide monitor), shrinks
+   back down toward the window's own minWidth (see agent/src/main/window.ts). */
+.consent-screen.glass { max-width: clamp(360px, 38vw, 520px); padding: clamp(28px, 3.5vw, 40px) clamp(26px, 3.5vw, 38px); text-align: left; }
+.consent-screen h1 { font-size: clamp(19px, 1.8vw, 23px); margin: 0 0 14px; }
+.consent-screen ul { padding-left: 18px; margin: 0 0 22px; color: var(--text-muted); font-size: clamp(13px, 1.2vw, 14.5px); line-height: 1.55; }
 .consent-screen li { margin-bottom: 10px; }
 .consent-screen li strong { color: var(--text); }
 
-.auth-card { padding: 40px 34px 32px; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 340px; animation: card-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.auth-card {
+  padding: clamp(32px, 4vw, 52px) clamp(28px, 4.5vw, 46px) clamp(28px, 3.5vw, 40px);
+  display: flex; flex-direction: column; align-items: center;
+  width: 100%; max-width: clamp(340px, 34vw, 460px);
+  animation: card-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
 @keyframes card-in { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.auth-card .wordmark { font-size: 28px; margin: 0 0 6px; }
-.auth-card .subtitle { color: var(--text-muted); font-size: 13.5px; margin: 0 0 26px; text-align: center; }
+.auth-card .wordmark { font-size: clamp(26px, 3vw, 34px); margin: 0 0 6px; }
+.auth-card .subtitle { color: var(--text-muted); font-size: clamp(13px, 1.3vw, 15px); margin: 0 0 26px; text-align: center; }
 
 .tabs {
   position: relative; display: grid; grid-template-columns: 1fr 1fr; width: 100%;
@@ -202,7 +212,12 @@ header .wordmark { font-size: 15px; margin-right: auto; }
 .mic-button-listening:hover { color: #16081f; }
 
 /* ================= orb — glow / dashed ring / radar sweep / 3 satellites / neural core ================= */
-.orb-wrap { position: relative; width: var(--orb-size, 220px); height: var(--orb-size, 220px); display: flex; align-items: center; justify-content: center; margin: 0 auto; --c1: var(--violet); --c2: var(--magenta); --c3: var(--coral); }
+/* Sized via clamp(), not a fixed inline px value from JS — same
+   not-responsive-when-maximized bug as the auth card, just via a different
+   mechanism (a hardcoded size prop instead of a hardcoded CSS max-width). */
+.orb-wrap { position: relative; display: flex; align-items: center; justify-content: center; margin: 0 auto; --c1: var(--violet); --c2: var(--magenta); --c3: var(--coral); }
+.orb-wrap-main { width: clamp(180px, 24vw, 280px); height: clamp(180px, 24vw, 280px); }
+.orb-wrap-small { width: clamp(64px, 9vw, 110px); height: clamp(64px, 9vw, 110px); margin-bottom: clamp(16px, 2vw, 26px); }
 .orb-glow {
   position: absolute; inset: -30%; border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--c1) 55%, transparent), color-mix(in srgb, var(--c2) 24%, transparent) 45%, transparent 72%);
