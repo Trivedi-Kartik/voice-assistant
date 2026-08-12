@@ -95,6 +95,20 @@ Tools: `open_app`, `web_search`, `open_url`. See `docs/CHANGELOG.md`.
   `docs/ARCHITECTURE.md` "Confirmation for sensitive tools" for the full
   design and its safety invariant.
 
+### ✅ `add_custom_app` — user-level additions to a system-level whitelist (this build)
+- New tool letting a user extend their *own* app list by voice ("add
+  Photoshop as an app I can open") — deliberately narrow: it only adds more
+  *names* to the two already-reviewed action types (`open_app`/`close_app`),
+  never a new kind of action. Safety is structural, not a soft check: a
+  native file picker means the input is always a real, already-existing
+  file, never free-typed text, plus a fixed denylist of dangerous system
+  binaries (`cmd.exe`, `powershell.exe`, etc.) as defense in depth. Same
+  spoken-confirmation gate as `close_app`/etc. Per-device only, same
+  precedent as `set_reminder`. See `docs/ARCHITECTURE.md`
+  "`add_custom_app`" for the full design, including the tool-timeout
+  override this needed (a human browsing a file dialog routinely takes
+  longer than the default 10-12s tool timeout).
+
 ### Next
 - `send_email_draft` — **not paid**, the Gmail API itself is free at this
   usage volume; blocked on external *setup*, not cost: needs a Google Cloud

@@ -4,6 +4,43 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — `add_custom_app`: user-level ability additions, kept safe by construction
+
+- **New tool: `add_custom_app`.** A user can now extend their own app list
+  by voice ("add Photoshop as an app I can open") — discussed at length
+  first, since letting the AI add abilities on its own (or even
+  user-approved-but-AI-authored ones) is genuinely unsafe: no automated
+  checker can reliably verify novel AI-authored behavior before it touches
+  a real computer, no matter how strict the check. What's actually safe,
+  and what this ships: a user can add more *names* to the two action types
+  that already exist and are already reviewed (`open_app`/`close_app`) —
+  never a new kind of action.
+- Safety is structural, not a soft rule: `execute()` opens a native file
+  picker (`.exe` filter) — the user must browse to and select a real,
+  already-existing file; there's no text field anywhere in the flow to
+  type a command into. `close_app`'s `processName` is derived mechanically
+  from the picked file's own name. A fixed denylist blocks picking known
+  system binaries (`cmd.exe`, `powershell.exe`, `regedit.exe`,
+  `certutil.exe`, etc.) as defense in depth on top of that.
+- Gated by the same spoken-confirmation flow as `close_app`/`read_clipboard`/
+  `take_screenshot_and_describe`. Stored per-device only
+  (`customAppStore.ts`, same `electron-store` pattern as `reminderStore.ts`)
+  — one user's added app is invisible to everyone else.
+- `appRegistry.ts`'s `lookupApp`/`knownAppNames` merge custom entries with
+  the built-in list transparently — `open_app`/`close_app` needed zero code
+  changes to actually use a custom app once added.
+- **Real timing issue caught before shipping, not after:** a human browsing
+  a file dialog routinely takes longer than the existing 10s (client) /12s
+  (server) default tool timeout. Added a small `TOOL_TIMEOUT_OVERRIDES` map
+  on both sides giving this specific tool ~90s — every other tool keeps its
+  strict default.
+- Small Settings addition: a "My apps" list to see and remove what's been
+  added, via two new IPC handlers (not voice-driven — lower-stakes than
+  adding one).
+- **Not yet verified:** the real file dialog, denylist rejection, and a full
+  voice round-trip — this dev environment is Linux, needs a pass on the
+  user's Windows machine.
+
 ## 2026-08-11 — Fix login/signup not scaling when the window is maximized
 
 - **Real bug, reported from live use:** the redesigned auth card looked

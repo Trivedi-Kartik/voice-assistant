@@ -75,6 +75,13 @@ function rateLimitMessage(err: unknown): string {
 }
 
 const TOOL_TIMEOUT_MS = 12_000;
+// Mirrors the same override on the client (agent/src/main/tools/index.ts) —
+// add_custom_app blocks on a human browsing a file dialog, so the server
+// side of this same round-trip needs to wait at least as long, or it gives
+// up on the client mid-pick. Every other tool keeps the strict default.
+const TOOL_TIMEOUT_OVERRIDES: Partial<Record<string, number>> = {
+  add_custom_app: 90_000,
+};
 const MAX_TOOL_LOOP_STEPS = 6; // bounded — a misbehaving model can't hang a session forever
 
 // Deliberately simple keyword matching, not another LLM call — this decides
@@ -410,7 +417,7 @@ export class Session {
                 .update({ where: { id: invocation.id }, data: { status: "timeout", completedAt: new Date() } })
                 .catch(() => {});
               resolve({ ok: false, message: "Tool timed out" });
-            }, TOOL_TIMEOUT_MS);
+            }, TOOL_TIMEOUT_OVERRIDES[name] ?? TOOL_TIMEOUT_MS);
 
             this.pendingCalls.set(callId, {
               timer,

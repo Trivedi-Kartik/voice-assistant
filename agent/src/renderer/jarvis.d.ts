@@ -37,6 +37,10 @@ export interface JarvisApi {
   shell: {
     openMicSettings(): void;
   };
+  customApps: {
+    list(): Promise<{ name: string; exePath: string; processName: string }[]>;
+    remove(name: string): Promise<void>;
+  };
 }
 
 declare global {

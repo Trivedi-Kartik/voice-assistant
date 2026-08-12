@@ -2,6 +2,7 @@ import { ipcMain, shell, type BrowserWindow } from "electron";
 import { authManager } from "../auth/authManager.js";
 import type { Connection } from "../ws/connection.js";
 import { hasConsented, recordConsent } from "../consent.js";
+import { listCustomApps, removeCustomApp } from "../customApps/customAppStore.js";
 
 export interface IpcContext {
   win: BrowserWindow;
@@ -64,4 +65,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   ipcMain.on("shell:openMicSettings", () => {
     shell.openExternal("ms-settings:privacy-microphone");
   });
+
+  // Viewing/removing custom apps (added via the add_custom_app tool, see
+  // tools/addCustomApp.ts) is a plain Settings action, not voice-driven —
+  // lower stakes than adding one, no need for a confirmation round-trip.
+  ipcMain.handle("customApps:list", () => listCustomApps());
+  ipcMain.handle("customApps:remove", (_e, name: string) => removeCustomApp(name));
 }

@@ -8,6 +8,7 @@ import { controlMediaTool } from "./controlMedia.js";
 import { setReminderTool } from "./setReminder.js";
 import { readClipboardTool } from "./readClipboard.js";
 import { takeScreenshotTool } from "./takeScreenshot.js";
+import { addCustomAppTool } from "./addCustomApp.js";
 import { TOOL_NAMES } from "../../shared/toolContract.js";
 
 // One file per tool, identical shape (name/parseArgs/execute) — no shared mutable
@@ -22,6 +23,7 @@ const REGISTRY: Record<string, ToolDefinition<any>> = {
   [setReminderTool.name]: setReminderTool,
   [readClipboardTool.name]: readClipboardTool,
   [takeScreenshotTool.name]: takeScreenshotTool,
+  [addCustomAppTool.name]: addCustomAppTool,
 };
 
 // Cheap insurance against silent drift between this registry and
@@ -36,6 +38,12 @@ if (registryNames.length !== contractNames.length || registryNames.some((n, i) =
 export const SUPPORTED_TOOL_NAMES = registryNames;
 
 const TOOL_TIMEOUT_MS = 10_000;
+// add_custom_app blocks on a human actually browsing a file dialog — the
+// default timeout would routinely fire mid-pick. Every other tool keeps the
+// strict default.
+const TOOL_TIMEOUT_OVERRIDES: Partial<Record<string, number>> = {
+  add_custom_app: 90_000,
+};
 
 // Guarantees a ToolResult is ALWAYS produced — parse failure, execution throw, or
 // timeout all resolve rather than reject, so the server's tool-calling loop is
@@ -53,11 +61,10 @@ export async function dispatchToolCall(name: string, rawArgs: unknown): Promise<
     // question resolved by the user's next voice turn — see
     // server/src/ws/session.ts and docs/ARCHITECTURE.md. By the time a
     // tool_call reaches here, it's already been confirmed.
+    const timeoutMs = TOOL_TIMEOUT_OVERRIDES[name] ?? TOOL_TIMEOUT_MS;
     return await Promise.race([
       tool.execute(args),
-      new Promise<ToolResult>((resolve) =>
-        setTimeout(() => resolve({ ok: false, message: "Tool timed out" }), TOOL_TIMEOUT_MS)
-      ),
+      new Promise<ToolResult>((resolve) => setTimeout(() => resolve({ ok: false, message: "Tool timed out" }), timeoutMs)),
     ]);
   } catch (err) {
     // ZodError.message is a raw JSON array of issues — not something to ever

@@ -11,4 +11,5 @@ export const DEVICE_CAPABILITIES = [
   "set_reminder",
   "read_clipboard",
   "take_screenshot_and_describe",
+  "add_custom_app",
 ];

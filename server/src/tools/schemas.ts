@@ -149,6 +149,23 @@ export const GROQ_TOOL_SCHEMAS: ToolSchema[] = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "add_custom_app",
+      description:
+        "Let the user add a new app to the ones they can open/close by name. Opens a file picker for the " +
+        "user to choose the real program — always asks the user to confirm first, and the user still has to " +
+        "pick the actual file themselves; this never adds anything without them physically selecting it.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "What the user wants to call this app, e.g. 'photoshop'." },
+        },
+        required: ["name"],
+      },
+    },
+  },
 ];
 
 // Server-handled tools (Phase 2) — these never round-trip to the client at all,
@@ -183,7 +200,7 @@ export const SERVER_TOOL_SCHEMAS: ToolSchema[] = [
 export const SERVER_TOOL_NAMES = new Set(SERVER_TOOL_SCHEMAS.map((s) => s.function.name));
 
 // The server-side replacement for what each tool's client-side describe()
-// used to do for the deleted dialog.showMessageBox gate — these three tools
+// used to do for the deleted dialog.showMessageBox gate — these four tools
 // now get a spoken confirmation question (see ws/session.ts) instead of a
 // popup. Presence in this map, not a "sensitivity" field, is what makes a
 // tool call pause for confirmation.
@@ -192,6 +209,7 @@ export const CONFIRMATION_PROMPTS: Partial<Record<string, (args: any) => string>
   close_app: (args) => `Close ${args?.app ?? "that"}? Say yes to confirm.`,
   read_clipboard: () => "Share your clipboard with me? Say yes to confirm.",
   take_screenshot_and_describe: () => "Take a screenshot and share it with me? Say yes to confirm.",
+  add_custom_app: (args) => `Add ${args?.name ?? "that"} as an app you can open? Say yes to confirm.`,
 };
 
 function assertSchemasMatchContract() {
