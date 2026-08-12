@@ -110,6 +110,10 @@ body {
 .consent-screen ul { padding-left: 18px; margin: 0 0 22px; color: var(--text-muted); font-size: clamp(13px, 1.2vw, 14.5px); line-height: 1.55; }
 .consent-screen li { margin-bottom: 10px; }
 .consent-screen li strong { color: var(--text); }
+/* Same fix as the auth card's controls — the button here uses the plain
+   global button style, which is a flat px size, so it would have the exact
+   same "card grew, button didn't" problem. */
+.consent-screen button { font-size: clamp(14px, 1.3vw, 16px); padding: clamp(10px, 1.2vw, 13px); }
 
 .auth-card {
   padding: clamp(32px, 4vw, 52px) clamp(28px, 4.5vw, 46px) clamp(28px, 3.5vw, 40px);
@@ -121,13 +125,20 @@ body {
 .auth-card .wordmark { font-size: clamp(26px, 3vw, 34px); margin: 0 0 6px; }
 .auth-card .subtitle { color: var(--text-muted); font-size: clamp(13px, 1.3vw, 15px); margin: 0 0 26px; text-align: center; }
 
+/* Every sized value below is clamp(), not a flat px — the earlier pass only
+   scaled the card container and two headline text elements (wordmark,
+   subtitle) and missed the actual controls inside it, which is exactly why
+   it still looked "compact": the card grew but the tabs/inputs/button text
+   and padding didn't, so they looked disproportionately tiny inside a now-
+   bigger card. Every control in this form scales together this time. */
 .tabs {
   position: relative; display: grid; grid-template-columns: 1fr 1fr; width: 100%;
-  background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border-soft); border-radius: 999px; padding: 4px; margin-bottom: 24px;
+  background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border-soft); border-radius: 999px;
+  padding: clamp(4px, 0.5vw, 6px); margin-bottom: clamp(20px, 2.2vw, 28px);
 }
 .tabs button {
-  position: relative; z-index: 2; margin: 0; text-align: center; padding: 9px 0;
-  font-size: 13px; font-weight: 600; background: none; border: none; width: auto;
+  position: relative; z-index: 2; margin: 0; text-align: center; padding: clamp(9px, 1vw, 12px) 0;
+  font-size: clamp(13px, 1.2vw, 15px); font-weight: 600; background: none; border: none; width: auto;
   color: var(--text-faint); cursor: pointer; border-radius: 999px; transition: color 0.25s ease;
 }
 .tabs button.active { color: var(--text); }
@@ -138,23 +149,24 @@ body {
 }
 .tabs .thumb.signup { transform: translateX(100%); }
 
-.field { width: 100%; margin-bottom: 14px; }
+.field { width: 100%; margin-bottom: clamp(14px, 1.5vw, 18px); }
 .field label {
-  display: block; font: 600 10.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  display: block; font: 600 clamp(10.5px, 1vw, 12px)/1 ui-monospace, "SF Mono", Menlo, monospace;
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 7px; padding-left: 2px;
 }
 .field input {
-  margin: 0; width: 100%; padding: 12px 14px; border-radius: 13px; border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.25); color: var(--text); font-size: 14px; outline: none;
+  margin: 0; width: 100%; padding: clamp(12px, 1.3vw, 15px) clamp(14px, 1.4vw, 17px);
+  border-radius: 13px; border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25); color: var(--text); font-size: clamp(14px, 1.3vw, 16px); outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 .field input::placeholder { color: var(--text-faint); }
 .field input:focus { border-color: rgba(139, 92, 246, 0.55); background: rgba(0, 0, 0, 0.35); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.14); }
 
 .cta {
-  width: 100%; margin: 10px 0 0; padding: 13px 0; border: none; border-radius: 13px;
+  width: 100%; margin: 10px 0 0; padding: clamp(13px, 1.4vw, 16px) 0; border: none; border-radius: 13px;
   background: var(--signal); background-size: 160% 160%; color: #16081f;
-  font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; cursor: pointer;
+  font-size: clamp(14.5px, 1.4vw, 17px); font-weight: 700; letter-spacing: -0.01em; cursor: pointer;
   box-shadow: 0 10px 30px -8px rgba(236, 72, 153, 0.45);
   transition: transform 0.18s ease, box-shadow 0.18s ease, background-position 0.6s ease;
 }
@@ -162,7 +174,7 @@ body {
 .cta:active:not(:disabled) { transform: translateY(0) scale(0.985); }
 .cta:disabled { opacity: 0.6; cursor: default; }
 
-.switch-line { margin-top: 18px; font-size: 12.5px; color: var(--text-faint); }
+.switch-line { margin-top: 18px; font-size: clamp(12.5px, 1.15vw, 14px); color: var(--text-faint); }
 
 /* ================= app shell (main conversation window) ================= */
 .app-shell {

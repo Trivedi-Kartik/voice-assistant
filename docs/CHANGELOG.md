@@ -4,6 +4,24 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Fix login/signup: the *previous* responsive fix was incomplete
+
+- **Real bug, reported after the last fix shipped:** the earlier
+  "maximized window" fix only scaled the auth card's own container and two
+  headline text elements (wordmark, subtitle) with `clamp()` — it missed
+  the actual controls inside it. So the card grew when the window was
+  maximized, but the tab buttons, inputs, and the submit button kept their
+  flat, fixed font-size and padding, which looked *more* wrong than
+  before: a big card with small, cramped-looking controls floating inside it.
+- Fixed properly this time: `.tabs`/`.tabs button`, `.field label`/
+  `.field input`, `.cta`, and `.switch-line` all now scale with `clamp()`
+  too, so every control in the form grows together with the card instead
+  of just the container.
+- Applied the same fix to the Consent screen's button, which had the
+  identical problem (a `clamp()`-scaled card with a plain, fixed-size
+  global button inside it) — fixing it now rather than waiting to be told
+  about it separately.
+
 ## 2026-08-11 — Redesign the "What can I ask?" screen
 
 - **Real design gap, called out directly:** the Help screen had been left as
