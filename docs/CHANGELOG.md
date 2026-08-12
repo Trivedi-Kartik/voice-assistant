@@ -4,6 +4,29 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Redesign the "What can I ask?" screen
+
+- **Real design gap, called out directly:** the Help screen had been left as
+  a flat text list while every other screen got the glassmorphic redesign
+  pass — under-designed relative to the rest of the app.
+- Rebuilt using the *same* visual language already established, not a new
+  one: a large `BotAvatar` (new `size="lg"` variant) as a real hero moment,
+  capabilities grouped into 5 categories (Apps, Media & reminders, Web,
+  Privacy-sensitive, Memory) each with a small icon in a gradient-tinted
+  badge, and each capability as its own glass card instead of a bare line
+  of text.
+- Confirmation status is now a visible signal instead of buried in a
+  sentence — anything gated by the spoken-confirmation flow
+  (`close_app`/`add_custom_app`/`read_clipboard`/`take_screenshot_and_describe`)
+  gets a small "Confirms first" pill next to it.
+- The "Memory" category icon deliberately reuses the exact node-and-line
+  constellation from the voice orb's core (`VoiceOrb.tsx`) — same motif,
+  same meaning, wherever it appears, rather than inventing a new icon
+  language just for this screen.
+- Also gave this panel the same `clamp()`-based responsive sizing as the
+  auth card fix, so it doesn't inherit the "stays small when the window is
+  maximized" bug.
+
 ## 2026-08-11 — `add_custom_app`: user-level ability additions, kept safe by construction
 
 - **New tool: `add_custom_app`.** A user can now extend their own app list

@@ -1,9 +1,11 @@
-// The assistant's avatar in the conversation — a small drawn bot (blinking
-// eyes, a glowing antenna tip) instead of a generic letter, so the "AI"
-// feels like a specific character rather than a template initial.
-export function BotAvatar() {
+// The assistant's avatar — a small drawn bot (blinking eyes, a glowing
+// antenna tip) instead of a generic letter, so the "AI" feels like a
+// specific character rather than a template initial. Used small next to
+// chat messages, and large as the Help screen's hero — same drawing, two
+// sizes, so the character stays recognizable everywhere it appears.
+export function BotAvatar({ size = "sm" }: { size?: "sm" | "lg" }) {
   return (
-    <div className="bot-avatar">
+    <div className={`bot-avatar${size === "lg" ? " bot-avatar-lg" : ""}`}>
       <svg className="bot-icon" viewBox="0 0 24 24">
         <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
         <circle className="bot-antenna-tip" cx="12" cy="2" />

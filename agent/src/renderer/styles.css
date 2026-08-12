@@ -286,6 +286,8 @@ header .wordmark { font-size: 15px; margin-right: auto; }
   box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
 }
 .bot-icon { width: 18px; height: 18px; overflow: visible; }
+.bot-avatar-lg { width: 56px; height: 56px; box-shadow: 0 0 20px rgba(139, 92, 246, 0.4); }
+.bot-avatar-lg .bot-icon { width: 36px; height: 36px; }
 .bot-head { fill: rgba(139, 92, 246, 0.28); stroke: rgba(236, 233, 242, 0.85); stroke-width: 1.3; }
 .bot-eye { fill: var(--magenta); r: 1.7; transform-box: fill-box; transform-origin: center; animation: bot-blink 4.2s ease-in-out infinite; filter: drop-shadow(0 0 2px var(--magenta)); }
 .bot-eye.r { animation-delay: 0.05s; }
@@ -323,15 +325,52 @@ button:disabled { opacity: 0.6; cursor: default; }
   padding: 48px 24px; overflow-y: auto;
   display: flex; flex-direction: column; align-items: center;
 }
-.settings-panel > *, .help-panel > * { width: 100%; max-width: 400px; }
+/* clamp(), not a flat 400px — same reasoning as the auth card: these
+   overlays are full-window, so they need to breathe on a maximized window
+   too, not just at the default size. */
+.settings-panel > *, .help-panel > * { width: 100%; max-width: clamp(340px, 46vw, 480px); }
 .settings-panel h2, .help-panel h2 { margin: 0 0 4px; font-size: 18px; }
 .help-list { list-style: none; margin: 16px 0; padding: 0; }
 .help-item { margin-bottom: 14px; }
 .custom-app-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .custom-app-item .link-button { margin: 0; }
-.help-examples { color: var(--violet); font-size: 13px; }
-.help-desc { color: var(--text-muted); font-size: 13px; margin-top: 2px; line-height: 1.4; }
+.help-examples { color: var(--violet); font-size: 13px; font-weight: 600; }
+.help-desc { color: var(--text-muted); font-size: 13px; margin-top: 3px; line-height: 1.45; }
 .hint { color: var(--text-faint); font-size: 12.5px; line-height: 1.5; margin: 8px 0; }
+
+/* Help screen hero — the bot gets a real introduction moment instead of the
+   panel just starting mid-list. */
+.help-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 8px; text-align: center; }
+.help-hero .wordmark { font-size: 21px; margin: 0; }
+.help-intro { text-align: center; }
+
+.help-groups { display: flex; flex-direction: column; gap: 22px; margin: 20px 0; }
+.help-group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.help-group-icon {
+  width: 30px; height: 30px; min-width: 30px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.28), rgba(236, 72, 153, 0.2));
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; color: var(--text);
+}
+.help-group-icon svg { width: 16px; height: 16px; }
+.help-group-title {
+  font: 700 11.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-muted);
+}
+
+.help-card {
+  background: var(--surface); border: 1px solid var(--border-soft); border-radius: 14px;
+  padding: 11px 14px; margin-bottom: 8px;
+}
+.help-card:last-child { margin-bottom: 0; }
+.help-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.confirm-pill {
+  flex: none; display: inline-flex; align-items: center; white-space: nowrap;
+  font: 700 9.5px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--coral); border: 1px solid rgba(251, 146, 60, 0.45); background: rgba(251, 146, 60, 0.1);
+  border-radius: 999px; padding: 3px 8px; margin-top: 1px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
