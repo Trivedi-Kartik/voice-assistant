@@ -208,16 +208,38 @@ add more *names* to the two action types that already exist and are already
 reviewed — open a named program, close a named program. No new action type
 is introduced.
 
-The safety property is structural, not a soft rule: `execute()`
-(`agent/src/main/tools/addCustomApp.ts`) opens Electron's native file picker
-(`dialog.showOpenDialog`, filtered to `.exe`) — the user must browse to and
-select a real, already-existing file. There is no text field anywhere in
-this flow for anyone (user or model) to type a command into. The picked
-file's basename becomes `processName` for `close_app` mechanically — never
-separately typed either. On top of that structural constraint, a fixed
-denylist blocks picking known "living-off-the-land" system binaries
-(`cmd.exe`, `powershell.exe`, `regedit.exe`, `mshta.exe`, `certutil.exe`,
-etc.) — defense in depth, not the primary defense.
+**Resolution order — Windows' own app list first, a file picker as fallback.**
+Confirmed via real use: Microsoft Store/UWP apps live in a protected folder
+a file picker can't properly browse into or select from at all — trying
+anyway silently picks the wrong thing (a Store shortcut instead of the real
+app was the actual reported bug). `execute()`
+(`agent/src/main/tools/addCustomApp.ts`) first runs `Get-StartApps`, Windows'
+own list of every installed Start Menu entry — traditional *and* Store apps
+alike — via a **fixed, parameter-less** PowerShell command (`Get-StartApps |
+ConvertTo-Json`, no interpolation at all); the user's spoken name is only
+ever compared against the returned list in plain JS (`findBestMatch`), never
+concatenated into the command. An unambiguous name match resolves directly;
+an ambiguous or absent match falls back to the native file picker
+(`dialog.showOpenDialog`, filtered to `.exe`) exactly as before.
+
+A Start Menu entry's `AppID` is either a real exe path (traditional apps) or
+a `"<PackageFamilyName>!<AppId>"` string (Store/UWP apps) — detected by the
+presence of `!`. Both become the tool's `openCommand` as-is: `openApp.ts`'s
+existing `cmd.exe /c start "" <openCommand>` launches either one correctly
+with **zero execution-side branching**, since `start` already resolves
+`shell:AppsFolder\<AppID>` the same way it resolves a real path. Store apps
+get no `processName` (a UWP AppID isn't a real process name) — same
+"open-only" convention `appRegistry.ts` already uses for File Explorer — so
+`close_app` on one returns a graceful "can't be closed this way," not a
+guess. The file-picker path still derives `processName` from the picked
+file's own basename, never separately typed.
+
+On top of both resolution paths, a fixed denylist blocks picking known
+"living-off-the-land" system binaries (`cmd.exe`, `powershell.exe`,
+`regedit.exe`, `mshta.exe`, `certutil.exe`, etc.) — defense in depth, not
+the primary defense, which stays structural either way: a name match is
+only ever one of the user's own already-installed apps, and a file pick is
+only ever a real file the user physically selected.
 
 Stored per-device only (`agent/src/main/customApps/customAppStore.ts`,
 `electron-store`, same pattern as `reminderStore.ts`) — one user's added app
