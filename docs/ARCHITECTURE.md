@@ -196,6 +196,46 @@ Two supporting details:
 call multiplies cost, and "describe my screen" is ambiguous with several
 monitors anyway.
 
+### `add_custom_app` — user-level additions to a system-level whitelist
+
+Explicitly discussed and rejected before building this: letting the LLM
+invent genuinely new *kinds* of actions, gated by any amount of automated
+checking, however strict. No checker can reliably verify novel
+AI-authored behavior is safe before it touches a real user's computer — see
+the "strict tool whitelist" rationale above, which this tool doesn't relax
+at all. What `add_custom_app` actually does is narrower and safe: a user can
+add more *names* to the two action types that already exist and are already
+reviewed — open a named program, close a named program. No new action type
+is introduced.
+
+The safety property is structural, not a soft rule: `execute()`
+(`agent/src/main/tools/addCustomApp.ts`) opens Electron's native file picker
+(`dialog.showOpenDialog`, filtered to `.exe`) — the user must browse to and
+select a real, already-existing file. There is no text field anywhere in
+this flow for anyone (user or model) to type a command into. The picked
+file's basename becomes `processName` for `close_app` mechanically — never
+separately typed either. On top of that structural constraint, a fixed
+denylist blocks picking known "living-off-the-land" system binaries
+(`cmd.exe`, `powershell.exe`, `regedit.exe`, `mshta.exe`, `certutil.exe`,
+etc.) — defense in depth, not the primary defense.
+
+Stored per-device only (`agent/src/main/customApps/customAppStore.ts`,
+`electron-store`, same pattern as `reminderStore.ts`) — one user's added app
+is invisible to every other user, same precedent as `set_reminder`.
+`appRegistry.ts`'s `lookupApp`/`knownAppNames` merge custom entries with the
+built-in list transparently, so `open_app`/`close_app` needed zero code
+changes to actually use a custom app once added — no new "run this custom
+app" tool exists or is needed.
+
+Gated by the same spoken-confirmation flow as `close_app`/`read_clipboard`/
+`take_screenshot_and_describe` (`CONFIRMATION_PROMPTS`) — but the file
+picker only opens *after* the user says "yes," which creates a real timing
+problem: a human browsing folders routinely takes longer than the 10s/12s
+default tool timeout (`agent/src/main/tools/index.ts` and
+`server/src/ws/session.ts` respectively). Both sides now have a small
+`TOOL_TIMEOUT_OVERRIDES` map giving this specific tool ~90s — every other
+tool keeps its strict default, this isn't a general loosening.
+
 ## Auth flow (email/password, JWT + refresh)
 
 1. Client generates/persists a `deviceId` locally.

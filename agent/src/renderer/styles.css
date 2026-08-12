@@ -327,6 +327,8 @@ button:disabled { opacity: 0.6; cursor: default; }
 .settings-panel h2, .help-panel h2 { margin: 0 0 4px; font-size: 18px; }
 .help-list { list-style: none; margin: 16px 0; padding: 0; }
 .help-item { margin-bottom: 14px; }
+.custom-app-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.custom-app-item .link-button { margin: 0; }
 .help-examples { color: var(--violet); font-size: 13px; }
 .help-desc { color: var(--text-muted); font-size: 13px; margin-top: 2px; line-height: 1.4; }
 .hint { color: var(--text-faint); font-size: 12.5px; line-height: 1.5; margin: 8px 0; }

@@ -1,3 +1,5 @@
+import { findCustomApp, listCustomApps } from "../customApps/customAppStore.js";
+
 // Single source of truth for the app whitelist, shared by openApp.ts and
 // closeApp.ts, so "what apps exist" never drifts into two separate lists. The
 // LLM can only ever supply one of these keys as a string — never a path or
@@ -70,11 +72,16 @@ const ALIASES: Record<string, string> = {
   code: "vscode",
 };
 
+// Custom (user-added, see tools/addCustomApp.ts) entries are checked first —
+// a user's own mapping wins if they've defined one, e.g. re-pointing "chrome"
+// at a portable install. Falls back to the built-in whitelist otherwise.
 export function lookupApp(name: string): AppEntry | undefined {
   const key = name.toLowerCase().trim();
+  const custom = findCustomApp(key);
+  if (custom) return { openCommand: custom.exePath, processName: custom.processName };
   return REGISTRY[key] ?? REGISTRY[ALIASES[key] ?? ""];
 }
 
 export function knownAppNames(): string[] {
-  return Object.keys(REGISTRY);
+  return [...Object.keys(REGISTRY), ...listCustomApps().map((a) => a.name)];
 }

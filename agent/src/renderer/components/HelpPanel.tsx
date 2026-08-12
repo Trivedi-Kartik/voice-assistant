@@ -49,6 +49,11 @@ const CAPABILITIES: CapabilityEntry[] = [
     description:
       "Karvix may remember something you say as a lasting fact and bring it up again in later conversations, when it decides it's clearly worth remembering.",
   },
+  {
+    examples: ['"Add Photoshop as an app I can open"'],
+    description:
+      "Always asks you out loud to confirm first, then opens a file picker so you can browse to and pick the real program yourself — nothing is ever added without you physically selecting it. Once added, open/close it by name like any built-in app. Only on this device — manage what you've added in Settings.",
+  },
 ];
 
 export function HelpPanel({ onClose }: { onClose: () => void }) {

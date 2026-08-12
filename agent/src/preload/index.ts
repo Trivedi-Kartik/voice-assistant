@@ -51,4 +51,8 @@ contextBridge.exposeInMainWorld("jarvis", {
   shell: {
     openMicSettings: () => ipcRenderer.send("shell:openMicSettings"),
   },
+  customApps: {
+    list: () => ipcRenderer.invoke("customApps:list"),
+    remove: (name: string) => ipcRenderer.invoke("customApps:remove", name),
+  },
 });
