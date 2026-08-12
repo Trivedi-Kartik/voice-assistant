@@ -99,6 +99,14 @@ export const addCustomAppTool: ToolDefinition<{ name: string }> = {
   name: "add_custom_app",
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ name }) {
+    // Windows-only (Get-StartApps, Microsoft Store AppIDs) — deviceCapabilities.ts
+    // already excludes this tool from non-Windows devices. Defense in
+    // depth, not the primary guard, in case a stale capability list ever
+    // lets one through anyway.
+    if (process.platform !== "win32") {
+      return { ok: false, message: "Adding custom apps isn't supported on this device yet." };
+    }
+
     let openCommand: string;
     let processName: string | undefined;
 

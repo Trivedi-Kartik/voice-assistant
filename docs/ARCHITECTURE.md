@@ -93,16 +93,76 @@ contextless utterance next time, never as an accidental confirmation.
 ### App control: `open_app` / `close_app`
 
 Both read from one whitelist, `agent/src/main/tools/appRegistry.ts` — an app
-name maps to an `openCommand` (`start`) and, optionally, a `processName`
-(`taskkill /IM ... /F`). An app with no `processName` is **open-only**: File
-Explorer, Settings, and Control Panel are deliberately excluded from
-`close_app` because force-closing them (`explorer.exe` especially) takes down
-the whole taskbar/desktop shell, not just one window — this isn't a gap to fill
-in later, it's a permanent exclusion.
+name maps to an `openCommand` and, optionally, a `processName`. An app with
+no `processName` is **open-only**: File Explorer, Settings, and Control
+Panel are deliberately excluded from `close_app` on Windows because
+force-closing them (`explorer.exe` especially) takes down the whole
+taskbar/desktop shell, not just one window — this isn't a gap to fill in
+later, it's a permanent exclusion. (The Linux registry has its own
+open-only entries, for a different reason — see below.)
 
-`close_app` is one of the three tools gated by spoken confirmation (see
+`close_app` is one of the four tools gated by spoken confirmation (see
 "Confirmation for sensitive tools" above) — `open_app` isn't, and runs
 immediately, same as v1.
+
+### Linux compatibility
+
+Karvix was Windows-only through Phase 3. Auditing what actually needed
+Windows-specific code (not assumed): `web_search`, `open_url`, `set_reminder`,
+`read_clipboard`, and `take_screenshot_and_describe` all turned out to
+already be standard cross-platform Electron APIs — nothing to change there.
+Only `open_app`/`close_app`, `control_media`, and `add_custom_app` were
+genuinely Windows-specific, plus one hardcoded `platform: "windows"` string
+in `authManager.ts`. Landed incrementally, same pattern as Phase 3:
+
+**Shipped:** `open_app`/`close_app`, via a platform-dispatch split —
+`appRegistry.win.ts`/`appRegistry.linux.ts` (data) and
+`appExec.win.ts`/`appExec.linux.ts` (execution), each behind a thin
+dispatcher (`appRegistry.ts`/`appExec.ts`) that picks based on
+`process.platform`. `openApp.ts`/`closeApp.ts` themselves stay fully
+platform-agnostic.
+
+The one real correctness point, not just "swap the command": Windows opens
+apps via `cmd.exe /c start`, which launches and returns immediately.
+`execFile()`-ing a Linux binary directly instead would wait for the
+*launched GUI app itself* to exit before resolving — hanging the tool call
+for as long as the app stays open. `appExec.linux.ts` uses
+`spawn(cmd, args, { detached: true }).unref()` instead (fire-and-forget,
+the real equivalent of what `start` does), racing a short ~250ms window for
+an immediate `error` event first so a missing binary still gets reported
+honestly rather than a false "opened it." Closing is simpler —
+`pkill -x -i <processName>` is short-lived like `taskkill`, no hang risk.
+
+`appRegistry.linux.ts` is explicitly a smaller, best-effort, **unverified**
+starter list (no real Linux desktop to test against in this dev
+environment) — and deliberately smaller than the Windows one: apps with no
+honest Linux equivalent (Word/Excel/PowerPoint, WhatsApp, classic Teams,
+mspaint) are left out rather than mapped to a wrong analogue. A few entries
+are open-only because the actual process that ends up running is
+unpredictable at add-time (`xdg-open` delegates to whatever file manager is
+configured; `x-terminal-emulator` is Debian/Ubuntu's own "whatever the
+default terminal is" symlink) — same open-only *shape* as Windows' File
+Explorer, different underlying reason.
+
+**Deferred to their own increments, not forgotten:**
+- `control_media` needs `playerctl`/`pactl` — external packages the user's
+  distro may or may not already have installed, a real decision point
+  (bundle a check/install prompt? require them? fail gracefully?) worth its
+  own pass, not a quick swap of the Windows PowerShell script.
+- `add_custom_app` needs `.desktop` file discovery (the XDG application
+  directories) instead of `Get-StartApps`/Microsoft Store AppIDs — a
+  different-shaped resolution problem, not a small tweak.
+- Linux packaging (`electron-builder.yml` only has a `win:` target today) —
+  not needed to test via `npm run dev` unpackaged, only for actually
+  distributing a Linux build.
+
+Both deferred tools are excluded from `DEVICE_CAPABILITIES`
+(`agent/src/main/deviceCapabilities.ts`) on non-Windows devices — the server
+then simply never offers those tool schemas to that device's LLM context at
+all, reusing the exact mechanism already built for "not every device
+implements every tool." Each tool also has its own one-line defensive
+platform check as a second layer, in case a stale capability list ever lets
+one through anyway.
 
 ### `control_media`
 

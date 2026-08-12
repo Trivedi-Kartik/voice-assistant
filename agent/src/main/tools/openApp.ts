@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { z } from "zod";
 import type { ToolDefinition } from "./types.js";
 import { lookupApp, knownAppNames } from "./appRegistry.js";
-
-const execFileAsync = promisify(execFile);
+import { openViaPlatform } from "./appExec.js";
 
 const argsSchema = z.object({ app: z.string() });
 
@@ -19,12 +16,9 @@ export const openAppTool: ToolDefinition<{ app: string }> = {
         message: `"${app}" isn't in the whitelist. Known apps: ${knownAppNames().join(", ")}.`,
       };
     }
-    try {
-      // Fixed argv passed to execFile — never a raw interpolated string passed to exec().
-      await execFileAsync("cmd.exe", ["/c", "start", "", entry.openCommand]);
-      return { ok: true, message: `Opened ${app}.` };
-    } catch {
-      return { ok: false, message: `${app} doesn't seem to be installed on this machine.` };
-    }
+    const opened = await openViaPlatform(entry);
+    return opened
+      ? { ok: true, message: `Opened ${app}.` }
+      : { ok: false, message: `${app} doesn't seem to be installed on this machine.` };
   },
 };

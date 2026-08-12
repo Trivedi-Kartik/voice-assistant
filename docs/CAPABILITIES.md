@@ -44,7 +44,9 @@ already calls for on every increment.
 
 ## Known gaps, today
 
-- Windows only.
+- Opening/closing apps now works on Linux too (best-effort — a smaller,
+  less-tested app list than Windows' — see `docs/ARCHITECTURE.md`).
+  Media control and "add a custom app" are still Windows-only for now.
 - Screen description only covers your primary monitor, not every display.
 - Reminders and preferences don't sync across multiple devices.
 - No email or calendar access yet (`send_email_draft` is next, pending

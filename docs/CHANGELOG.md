@@ -4,6 +4,47 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-11 — Linux compatibility, increment 1: `open_app`/`close_app`
+
+- **Audited what actually needed Windows-specific code first:**
+  `web_search`, `open_url`, `set_reminder`, `read_clipboard`, and
+  `take_screenshot_and_describe` were already standard cross-platform
+  Electron APIs — nothing to change. Only `open_app`/`close_app`,
+  `control_media`, and `add_custom_app` were genuinely Windows-specific.
+  This increment covers `open_app`/`close_app` only; the other two are
+  deferred to their own increments (see `ROADMAP.md`).
+- New platform-dispatch split: `appRegistry.win.ts`/`appRegistry.linux.ts`
+  (data) and `appExec.win.ts`/`appExec.linux.ts` (execution), each behind a
+  thin dispatcher chosen by `process.platform`. `openApp.ts`/`closeApp.ts`
+  themselves needed zero platform-specific code — they just call the
+  dispatchers.
+- **Real correctness point, not just swapping the command:** opening an app
+  on Linux uses `spawn(cmd, args, { detached: true }).unref()`, not
+  `execFile()` — `execFile`'s promise only resolves when the child exits,
+  which would hang the tool call for as long as a launched GUI app stays
+  open. Verified directly in this dev sandbox (it's Linux): a 5-second
+  child via `execFile`-style waiting would block ~5000ms; the
+  `spawn`+`unref()` approach resolves in ~250ms regardless, and a
+  nonexistent binary's `ENOENT` still gets caught (fires in ~2ms, well
+  inside the 250ms grace window) rather than reporting false success.
+- `appRegistry.linux.ts` is a smaller, explicitly best-effort/unverified
+  starter list — apps with no honest Linux equivalent (Word/Excel/PowerPoint,
+  WhatsApp, classic Teams, mspaint) are left out rather than mapped to a
+  wrong analogue.
+- `control_media`/`add_custom_app` excluded from `DEVICE_CAPABILITIES` on
+  non-Windows devices (server never offers those tool schemas to a Linux
+  client's LLM context at all), plus a one-line defensive platform check
+  inside each tool itself.
+- Also fixed: `authManager.ts` hardcoded `platform: "windows"` regardless of
+  actual OS — wrong on every non-Windows device already, independent of
+  this increment landing.
+- **Verified in this sandbox** (confirmed real binaries: `pkill`,
+  `xdg-open`, `x-terminal-emulator`, `gnome-calculator` all exist here, and
+  `pkill -x`/`-i` are real flags with the documented semantics) — but still
+  needs a pass on an actual Linux desktop to confirm a GUI app's window
+  really appears, same caveat class as every Windows claim needing the
+  user's real machine.
+
 ## 2026-08-11 — Fix add_custom_app on Microsoft Store apps; force English STT
 
 - **Real bug, reported from live use:** adding a Microsoft Store app (e.g.
