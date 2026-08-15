@@ -12,6 +12,10 @@ export interface CustomApp {
   // isn't a real process name, so there's no reliable processName to give
   // taskkill.
   processName?: string;
+  // Linux only: a .desktop entry's Exec line is command + arguments (e.g.
+  // "code" + ["--new-window"]), unlike Windows' single openCommand string —
+  // see tools/addCustomApp.linux.ts.
+  args?: string[];
 }
 
 // Client-local only, per device — a user's own app, added by them, never
@@ -35,8 +39,8 @@ export function findCustomApp(name: string): CustomApp | undefined {
 // A later add with the same name replaces the earlier one — re-adding
 // "photoshop" pointed at a different install is a correction, not a
 // duplicate entry.
-export function addCustomApp(name: string, openCommand: string, processName?: string): CustomApp {
-  const app: CustomApp = { name: name.toLowerCase().trim(), openCommand, processName };
+export function addCustomApp(name: string, openCommand: string, processName?: string, args?: string[]): CustomApp {
+  const app: CustomApp = { name: name.toLowerCase().trim(), openCommand, processName, args };
   store.set("apps", [...all().filter((a) => a.name !== app.name), app]);
   return app;
 }
