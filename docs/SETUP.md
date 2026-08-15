@@ -66,11 +66,34 @@ Try: *"Open Chrome and search top JavaScript frameworks 2026."*
 cd agent
 npm run package
 ```
-Produces a signed-or-not NSIS installer in `agent/release/` via `electron-builder`
-(see `electron-builder.yml`). Auto-update checks GitHub Releases
-(`electron-updater`) — point `publish.owner`/`publish.repo` at your actual repo
-before shipping. Without a code-signing certificate, Windows SmartScreen will warn
-on first run; acceptable for early/invited users, revisit before a broader launch.
+Produces a signed-or-not NSIS installer (Windows) and an AppImage (Linux) in
+`agent/release/` via `electron-builder` (see `electron-builder.yml`).
+Auto-update checks GitHub Releases (`electron-updater`) — point
+`publish.owner`/`publish.repo` at your actual repo before shipping. Without a
+code-signing certificate, Windows SmartScreen will warn on first run;
+acceptable for early/invited users, revisit before a broader launch.
+
+**Linux: the AppImage cannot be launched by a plain double-click yet.**
+Confirmed by testing directly: Chromium's sandbox needs its bundled
+`chrome-sandbox` helper to be root-owned with the setuid bit (mode 4755), but
+an AppImage extracts to a per-run temp directory at the *invoking user's*
+permissions, every time — there is no way to bake correct root ownership into
+a portable AppImage, and no in-app code fix works either, since the check
+happens in Chromium's native startup before any of the app's own JavaScript
+runs (confirmed by testing `app.commandLine.appendSwitch` and
+`ELECTRON_DISABLE_SANDBOX` from inside the app — neither works; both run too
+late). This is a known, general Electron+AppImage+Linux limitation, not a
+Karvix-specific bug.
+
+For now, invited testers need to launch it from a terminal:
+```bash
+chmod +x Karvix-*.AppImage
+./Karvix-*.AppImage --no-sandbox
+```
+If that's too much friction for a broader set of testers later, the real fix
+is switching (or adding) a `.deb`/`.rpm` target — those run a root-privileged
+install step that *can* set `chrome-sandbox`'s permissions correctly, which
+an AppImage structurally cannot do.
 
 ## 5. Deploying the backend
 
@@ -121,6 +144,7 @@ plan was designed around, so no other change was needed to accommodate it.
 | "Open Chrome" does nothing | The app name isn't in the whitelist — see `agent/src/main/tools/appRegistry.ts`. |
 | No sound on reply | Check Windows isn't blocking audio permissions/output device for Electron. |
 | Mic not captured | Windows Settings → Privacy → Microphone → allow desktop apps (the app also surfaces a direct link to this when it detects the mic is blocked). |
+| Linux AppImage crashes instantly with "SUID sandbox helper binary... not configured correctly" | Expected — see "Packaging" step 4 above. Launch it with `./Karvix-*.AppImage --no-sandbox` from a terminal instead of double-clicking. |
 | `[session] findRelevantMemories failed` with `ERR_DLOPEN_FAILED` on `onnxruntime_binding.node` | `onnxruntime-node`'s native addon is missing a dependency DLL — almost always the Microsoft Visual C++ Redistributable (x64) isn't installed. Install it, restart your terminal, and if it still fails do a clean `server/node_modules` reinstall (antivirus sometimes strips files post-install). Non-fatal either way — the voice/tool loop keeps working, only memory recall is degraded until fixed (see `server/src/memory/embeddings.ts`). |
 | "Play/pause/volume" does nothing | `control_media` shells out to `powershell.exe -Command`. If Group Policy blocks inline `-Command` execution (rare, usually only on locked-down corporate machines), it'll fail silently to the user as "Couldn't control media playback." Check `agent/src/main/tools/controlMedia.ts`'s script runs manually in a PowerShell prompt. |
 | Reminder never showed | `set_reminder` is client-local (see `docs/ARCHITECTURE.md`) — it only fires if the Electron app was running (tray counts) at the time. Also check Windows Settings → System → Notifications hasn't blocked notifications for the app; without that permission, `Notification.isSupported()`/`.show()` won't visibly alert you even though the reminder still gets marked fired. |

@@ -4,6 +4,25 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-15 — Documented (not fixed — confirmed not fixable in-app) the Linux AppImage sandbox crash
+
+Tried three in-app fixes for the AppImage crashing on launch with "SUID
+sandbox helper binary... not configured correctly" — `app.commandLine
+.appendSwitch("no-sandbox")`, adding `"no-zygote-sandbox"` alongside it, and
+setting `process.env.ELECTRON_DISABLE_SANDBOX` before `electron` is ever
+required (confirmed via the compiled output that this ran first). All three
+tested directly against a rebuilt AppImage; none worked. Root cause: an
+AppImage extracts its bundled `chrome-sandbox` helper to a per-run temp
+directory at the *invoking user's* permissions every time — it can never be
+root-owned with the setuid bit, which Chromium's sandbox requires — and the
+check happens in Chromium's native startup, before any of the app's own
+JavaScript runs at all, so no code running "inside" the app can beat it.
+This is a general Electron+AppImage+Linux limitation, not fixable short of
+switching to a `.deb`/`.rpm` target with a root-privileged install step.
+`docs/SETUP.md` now documents the one thing that does work: launching from a
+terminal with `--no-sandbox` (verified directly). A plain double-click does
+not work yet.
+
 ## 2026-08-15 — Fixed the packaged client always connecting to localhost
 
 `docs/SETUP.md` used to say "point the packaged client's `.env` at your
