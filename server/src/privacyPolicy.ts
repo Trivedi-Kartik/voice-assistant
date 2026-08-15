@@ -4,6 +4,11 @@
 // docs/ARCHITECTURE.md "Security / privacy"). Served as static HTML directly
 // from this Express app (see index.ts's `GET /privacy`) — no separate
 // hosting, no build step, stays free.
+//
+// CONTACT_EMAIL below is a real placeholder, not a filled-in value — set it
+// to whatever address you actually want real users emailing before this
+// goes live to anyone. Never guess/reuse an email on someone's behalf here.
+const CONTACT_EMAIL = "SET-YOUR-CONTACT-EMAIL@example.com";
 export const PRIVACY_POLICY_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -68,7 +73,7 @@ export const PRIVACY_POLICY_HTML = `<!doctype html>
     prompt (closing an app, reading your clipboard, taking a screenshot) —
     nothing sensitive happens without your explicit go-ahead.</li>
   <li>You can ask us to delete your account and everything associated with
-    it at any time — email <a href="mailto:dev@dyrect.co">dev@dyrect.co</a>.</li>
+    it at any time — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</li>
 </ul>
 
 <h2>Security</h2>
@@ -80,7 +85,7 @@ export const PRIVACY_POLICY_HTML = `<!doctype html>
 
 <h2>Contact</h2>
 <p>
-  Questions, concerns, or a deletion request: <a href="mailto:dev@dyrect.co">dev@dyrect.co</a>.
+  Questions, concerns, or a deletion request: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.
 </p>
 </body>
 </html>
