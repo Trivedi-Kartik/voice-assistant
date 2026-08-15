@@ -95,9 +95,16 @@ couldn't be confirmed as genuinely free without a card (see
 4. Deploy. Render gives you a `https://karvix-server.onrender.com`-style URL
    (or whatever it ends up naming the service) once live.
 
-Then point the packaged client's `.env` (`SERVER_WS_URL`/`SERVER_HTTP_URL`) at
-that URL (`https://...` / `wss://...`) before building the installer for real
-users.
+Then update the production fallback URLs baked into the client source —
+`agent/src/main/auth/authManager.ts`'s `SERVER_HTTP_URL` and
+`agent/src/main/ws/connection.ts`'s `SERVER_WS_URL` — to that URL
+(`https://...` / `wss://...`) before building the installer for real users.
+
+(Editing the packaged client's `.env` does **not** work for this — verified
+by tracing the actual compiled output: `.env` is never bundled into a
+packaged app, and plain `tsc` doesn't inline env vars at build time, so a
+packaged build always falls through to these two hardcoded defaults
+regardless of what `.env` says. `.env` only affects `npm run dev`.)
 
 Free tier spins the service down after 15 minutes of idle — same "~1-2s cold
 start on the first message after a quiet period" trade-off the original Fly

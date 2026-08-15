@@ -2,7 +2,9 @@ import { WebSocket } from "ws";
 import { authManager } from "../auth/authManager.js";
 import type { ClientMessage, ServerMessage } from "../../shared/protocol.js";
 
-const SERVER_WS_URL = process.env.SERVER_WS_URL ?? "ws://localhost:8080";
+// See authManager.ts's SERVER_HTTP_URL for why this fallback (not .env) is
+// what actually reaches a packaged build.
+const SERVER_WS_URL = process.env.SERVER_WS_URL ?? "wss://karvix-server.onrender.com";
 
 export type ConnectionStatus = "idle" | "connecting" | "connected" | "reconnecting" | "error";
 

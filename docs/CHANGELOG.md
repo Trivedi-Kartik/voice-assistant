@@ -4,6 +4,28 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-15 — Fixed the packaged client always connecting to localhost
+
+`docs/SETUP.md` used to say "point the packaged client's `.env` at your
+production URL before building the installer" — verified by tracing the
+actual compiled output that this **does not work**: `electron-builder.yml`'s
+`files:` never bundles `.env` into a packaged app, and plain `tsc` (this
+project's main-process build step) doesn't inline env vars, so a packaged
+build always fell through to the hardcoded `http://localhost:8080` /
+`ws://localhost:8080` defaults regardless of `.env`'s contents — every real
+user's installer would have silently tried to talk to their own machine.
+Never caught before because packaging + connecting had never actually been
+tested end-to-end together until now.
+
+Fixed by making `agent/src/main/auth/authManager.ts`'s `SERVER_HTTP_URL` and
+`agent/src/main/ws/connection.ts`'s `SERVER_WS_URL` fall back to the real
+production URLs (`https://karvix-server.onrender.com` /
+`wss://karvix-server.onrender.com`) directly in source — this is what
+"baked in at build time" actually has to mean given how this build is
+structured. Local dev is unaffected (dev's own `.env` still sets these
+explicitly, which still wins). Verified the compiled `dist/main` output
+contains the production URL, then built and ran the real AppImage.
+
 ## 2026-08-15 — Fixed the Docker build/runtime: two real bugs, never caught before
 
 `server/Dockerfile` had never been successfully built until the first real
