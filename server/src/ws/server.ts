@@ -22,7 +22,21 @@ export function attachWsServer(httpServer: HttpServer): void {
     });
   });
 
-  wss.on("connection", async (ws: WebSocket, req) => {
+  wss.on("connection", (ws: WebSocket, req) => {
+    // Real bug, confirmed live: this callback isn't awaited by the
+    // EventEmitter, so a rejected promise anywhere in the connection-setup
+    // path (e.g. a transient DB blip on the findUnique/update calls below)
+    // was an unhandled rejection — which crashed the whole process, not just
+    // this one connection. See index.ts for the same class of fix on the
+    // HTTP side (asyncHandler) — here it's a plain try/catch since there's
+    // no Express error middleware to forward to.
+    handleConnection(ws, req).catch((err) => {
+      console.error("[ws] connection setup failed", err);
+      ws.close(1011, "internal_error");
+    });
+  });
+
+  async function handleConnection(ws: WebSocket, req: import("node:http").IncomingMessage): Promise<void> {
     const url = new URL(req.url ?? "", "http://internal");
     const ticket = url.searchParams.get("ticket");
 
@@ -37,7 +51,10 @@ export function attachWsServer(httpServer: HttpServer): void {
       return;
     }
 
-    const device = await db.device.findUnique({ where: { id: identity.deviceId } });
+    const device = await db.device.findUnique({
+      where: { id: identity.deviceId },
+      include: { user: { select: { language: true } } },
+    });
     if (!device || device.revokedAt) {
       ws.close(4401, "device_revoked");
       return;
@@ -45,7 +62,7 @@ export function attachWsServer(httpServer: HttpServer): void {
     await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
 
     const capabilities = Array.isArray(device.capabilities) ? (device.capabilities as string[]) : [];
-    const session = await Session.create(ws, identity.userId, identity.deviceId, capabilities);
+    const session = await Session.create(ws, identity.userId, identity.deviceId, capabilities, device.user.language);
 
     ws.send(JSON.stringify({ type: "auth_ok" }));
 
@@ -61,5 +78,5 @@ export function attachWsServer(httpServer: HttpServer): void {
 
     ws.on("close", () => session.handleDisconnect());
     ws.on("error", () => session.handleDisconnect());
-  });
+  }
 }

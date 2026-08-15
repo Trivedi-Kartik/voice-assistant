@@ -11,6 +11,11 @@ import {
   SERVER_TOOL_NAMES,
   CONFIRMATION_PROMPTS,
 } from "../tools/schemas.js";
+import { TOOL_NAMES } from "../tools/toolNames.js";
+import { LANGUAGE_NAMES, type LanguageCode } from "../i18n/languages.js";
+import { getMessages } from "../i18n/messages.js";
+import { classifyConfirmation } from "../i18n/confirmation.js";
+import { getConfirmationPrompt } from "../i18n/confirmationPrompts.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
 import { redis, conversationKey, CONVERSATION_TTL_SECONDS } from "../redis.js";
@@ -44,22 +49,67 @@ const SYSTEM_PROMPT =
 // Defensive backstop, not the primary fix (that's the system prompt above): if a
 // model still verbalizes a tool call as text instead of using the structured
 // mechanism, never speak/show raw pseudo-code to the user. Confirmed real
-// symptom, not hypothetical — reported from actual usage.
-function sanitizeAssistantText(text: string): string {
+// symptom, not hypothetical — reported from actual usage. Two shapes seen live:
+// bare "web_search(query: ...)" prose, and a pseudo-XML wrapper like
+// "<function(web_search){\"query\": \"...\"}</function>". Built from TOOL_NAMES
+// so every current tool is covered, not just whichever ones prompted the first fix.
+const TOOL_NAME_ALTERNATION = TOOL_NAMES.join("|");
+const BARE_CALL_PATTERN = new RegExp(`\\b(${TOOL_NAME_ALTERNATION})\\s*\\([^)]*\\)`, "gi");
+const FUNCTION_TAG_PATTERN = /<\/?function\b[^>]*>/gi;
+// Non-global twin of the two patterns above, used only for detection (see
+// looksLikeLeakedToolCall below) — deliberately a separate regex object, not
+// .test() on the global ones: a global regex's .test() mutates its own
+// lastIndex, so reusing BARE_CALL_PATTERN/FUNCTION_TAG_PATTERN here would give
+// wrong answers on alternating calls depending on prior state.
+const LEAK_DETECT_PATTERN = new RegExp(`(<\\/?function\\b[^>]*>)|(\\b(${TOOL_NAME_ALTERNATION})\\s*\\([^)]*\\))`, "i");
+
+// Distinct from the documented tool_use_failed retry in llm.ts (a 400 the SDK
+// throws): here Groq returns 200 with toolCalls empty because the model chose
+// to write the call as prose instead of using the real mechanism. Confirmed
+// live: "search for X" produced exactly this — no tool ever ran. Retry a
+// couple of times before falling back to sanitizeAssistantText's honest
+// failure message, same self-healing spirit as the other retry.
+const MAX_LEAKED_CALL_RETRIES = 2;
+
+function looksLikeLeakedToolCall(text: string): boolean {
+  return LEAK_DETECT_PATTERN.test(text);
+}
+
+function sanitizeAssistantText(text: string, language: string): string {
   let cleaned = text.replace(/```[\s\S]*?```/g, "").trim();
-  cleaned = cleaned.replace(/\b(open_app|web_search|open_url)\s*\([^)]*\)/gi, "").trim();
+  cleaned = cleaned.replace(FUNCTION_TAG_PATTERN, "").trim();
+  cleaned = cleaned.replace(BARE_CALL_PATTERN, "").trim();
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
-  return cleaned.length > 0 ? cleaned : "Done.";
+  const messages = getMessages(language);
+  // A leak was actually caught and stripped — say so honestly rather than
+  // falsely implying success with a generic "Done."
+  if (cleaned.length === 0 && text.trim().length > 0) {
+    return messages.leakedCallFallback;
+  }
+  return cleaned.length > 0 ? cleaned : messages.doneFallback;
 }
 
 // Phase 2: relevant memories (semantic search over this user's remembered
 // preferences, see memory/memoryStore.ts) get folded into the system prompt
 // each turn — the model doesn't need to explicitly "call" a recall tool, the
 // context is just already there, same shape as a typical RAG setup.
-function buildSystemPrompt(memories: RelevantMemory[]): string {
-  if (memories.length === 0) return SYSTEM_PROMPT;
+//
+// Multi-language support: only appends a language directive when it's not
+// "en" — keeps English's prompt byte-for-byte identical to before this
+// feature existed (verified deliberately, see docs/ARCHITECTURE.md "Known
+// reliability limitation" — no reason to risk regressing the one language
+// this has always been tested in).
+function buildSystemPrompt(memories: RelevantMemory[], language: string): string {
+  let prompt = SYSTEM_PROMPT;
+  if (language !== "en") {
+    const languageName = LANGUAGE_NAMES[language as LanguageCode] ?? language;
+    prompt +=
+      ` Always respond only in ${languageName} — never in English. Keep app and product names ` +
+      `(e.g. Chrome, Spotify) in their original form, untranslated.`;
+  }
+  if (memories.length === 0) return prompt;
   const facts = memories.map((m) => `- ${m.factText}`).join("\n");
-  return `${SYSTEM_PROMPT}\n\nThings you know about this user from past conversations:\n${facts}`;
+  return `${prompt}\n\nThings you know about this user from past conversations:\n${facts}`;
 }
 
 // Groq's own rate limit (distinct from this app's per-user daily cap, see
@@ -67,11 +117,12 @@ function buildSystemPrompt(memories: RelevantMemory[]): string {
 // reset" — those deserve different messages. Groq's `retry-after` header tells
 // us which; without checking it, a 10-minute wait was getting reported as "try
 // again in a few seconds," which is actively misleading.
-function rateLimitMessage(err: unknown): string {
+function rateLimitMessage(err: unknown, language: string): string {
   const retryAfter = getRetryAfterSeconds(err);
+  const messages = getMessages(language);
   return retryAfter !== null
-    ? `Groq's usage limit is temporarily reached — try again in about ${formatWaitTime(retryAfter)}.`
-    : "Things are a bit busy right now — please try again in a few seconds.";
+    ? messages.rateLimitedWithWait(formatWaitTime(retryAfter, language))
+    : messages.rateLimitedGeneric;
 }
 
 const TOOL_TIMEOUT_MS = 12_000;
@@ -84,25 +135,9 @@ const TOOL_TIMEOUT_OVERRIDES: Partial<Record<string, number>> = {
 };
 const MAX_TOOL_LOOP_STEPS = 6; // bounded — a misbehaving model can't hang a session forever
 
-// Deliberately simple keyword matching, not another LLM call — this decides
-// whether something destructive/private is about to happen, so it needs to
-// be predictable, not "probably right most of the time" the way tool-call
-// generation itself already isn't (see docs/ARCHITECTURE.md). Unclear
-// defaults to "no" at the call site — same fail-safe default the deleted
-// client-side dialog already had (its cancelId pointed at Deny).
-const YES_WORDS = ["yes", "yeah", "yep", "yup", "sure", "confirm", "confirmed", "okay", "ok", "go ahead", "do it", "please do"];
-const NO_WORDS = ["no", "nope", "nah", "cancel", "stop", "don't", "do not", "never mind", "nevermind"];
-
-function classifyConfirmation(transcript: string): "yes" | "no" | "unclear" {
-  // Confirmed via real testing: Whisper transcripts almost always carry
-  // trailing punctuation ("Yes.") — without stripping it, that never matched
-  // "yes" exactly and never matched "yes " (space) either, so every plain
-  // "Yes." was silently misclassified as unclear/declined.
-  const normalized = transcript.trim().toLowerCase().replace(/[.!?,]+$/, "");
-  if (YES_WORDS.some((w) => normalized === w || normalized.startsWith(`${w} `))) return "yes";
-  if (NO_WORDS.some((w) => normalized === w || normalized.startsWith(`${w} `))) return "no";
-  return "unclear";
-}
+// classifyConfirmation moved to i18n/confirmation.ts (per-language
+// YES_WORDS/NO_WORDS) — still the same deliberately-simple keyword matching,
+// not another LLM call, and unclear still defaults to "no" at the call site.
 
 interface PendingCall {
   resolve: (result: ToolResult) => void;
@@ -132,6 +167,11 @@ export class Session {
     readonly userId: string,
     readonly deviceId: string,
     private readonly capabilities: string[],
+    // One of the 8 languages in i18n/languages.ts — a per-user preference
+    // (see auth/routes.ts's /me/language), not a device capability. Drives
+    // Whisper's STT language, the LLM's response-language directive, and
+    // the confirmation classifier's YES_WORDS/NO_WORDS (see i18n/).
+    private readonly language: string,
     conversationId?: string
   ) {
     this.conversationId = conversationId ?? uuid();
@@ -142,9 +182,10 @@ export class Session {
     userId: string,
     deviceId: string,
     capabilities: string[],
+    language: string,
     resumeConversationId?: string
   ): Promise<Session> {
-    const session = new Session(ws, userId, deviceId, capabilities, resumeConversationId);
+    const session = new Session(ws, userId, deviceId, capabilities, language, resumeConversationId);
     if (resumeConversationId) {
       const raw = await redis.get(conversationKey(userId, resumeConversationId));
       if (raw) session.history = JSON.parse(raw) as ChatMessage[];
@@ -188,7 +229,7 @@ export class Session {
   handleDisconnect(): void {
     for (const pending of this.pendingCalls.values()) {
       clearTimeout(pending.timer);
-      pending.resolve({ ok: false, message: "Device disconnected before finishing this action." });
+      pending.resolve({ ok: false, message: getMessages(this.language).deviceDisconnected });
       db.toolInvocation
         .update({ where: { id: pending.invocationId }, data: { status: "timeout", completedAt: new Date() } })
         .catch(() => {});
@@ -213,11 +254,13 @@ export class Session {
     this.audioChunks = [];
     if (audio.length === 0) return;
 
+    const messages = getMessages(this.language);
+
     if (!tryAcquireUserLock(this.userId)) {
       this.send({
         type: "error",
         code: "internal",
-        message: "Still working on your last request — one moment.",
+        message: messages.turnInProgress,
       });
       return;
     }
@@ -230,15 +273,14 @@ export class Session {
         this.send({
           type: "error",
           code: "rate_limited",
-          message:
-            "You've hit today's free limit. Add your own Groq API key in Settings for unlimited use, or try again after midnight UTC.",
+          message: messages.dailyLimitReached,
         });
         return;
       }
 
       let transcript: string;
       try {
-        transcript = await transcribeAudio(apiKey, audio);
+        transcript = await transcribeAudio(apiKey, audio, this.language);
       } catch (err) {
         // Distinct from the LLM-loop catch below: a genuinely corrupted/silent
         // recording (or Groq being rate-limited on the STT call specifically)
@@ -248,7 +290,7 @@ export class Session {
         this.send({
           type: "error",
           code: "stt_failed",
-          message: isGroqRateLimit(err) ? rateLimitMessage(err) : "I didn't catch that clearly — could you try again?",
+          message: isGroqRateLimit(err) ? rateLimitMessage(err, this.language) : messages.sttUnclearError,
         });
         return;
       }
@@ -257,7 +299,7 @@ export class Session {
       // to transcribe anything — don't waste an LLM call (and the user's daily
       // turn) on empty input; just ask them to repeat.
       if (!transcript) {
-        this.send({ type: "error", code: "stt_failed", message: "I didn't catch that — could you try again?" });
+        this.send({ type: "error", code: "stt_failed", message: messages.sttEmptyError });
         return;
       }
 
@@ -290,7 +332,7 @@ export class Session {
       if (this.pendingConfirmation) {
         const pending = this.pendingConfirmation;
         this.pendingConfirmation = undefined;
-        if (classifyConfirmation(transcript) === "yes") {
+        if (classifyConfirmation(transcript, this.language) === "yes") {
           const callId = uuid();
           this.history.push({
             role: "assistant",
@@ -308,16 +350,22 @@ export class Session {
         console.error("[session] findRelevantMemories failed", err);
         return [] as RelevantMemory[];
       });
-      this.history[0] = { role: "system", content: buildSystemPrompt(relevantMemories) };
+      this.history[0] = { role: "system", content: buildSystemPrompt(relevantMemories, this.language) };
 
       const tools = [...toolSchemasForCapabilities(this.capabilities), ...SERVER_TOOL_SCHEMAS];
 
       for (let step = 0; step < MAX_TOOL_LOOP_STEPS; step++) {
-        const { assistantMessage, toolCalls } = await runLlmStep(apiKey, this.history, tools);
+        let assistantMessage, toolCalls;
+        for (let leakAttempt = 0; ; leakAttempt++) {
+          ({ assistantMessage, toolCalls } = await runLlmStep(apiKey, this.history, tools));
+          const leaked = toolCalls.length === 0 && looksLikeLeakedToolCall(assistantMessage.content);
+          if (!leaked || leakAttempt >= MAX_LEAKED_CALL_RETRIES) break;
+          console.warn(`[llm] retrying leaked tool-call-as-text (attempt ${leakAttempt + 1}/${MAX_LEAKED_CALL_RETRIES})`);
+        }
         this.history.push(assistantMessage);
 
         if (toolCalls.length === 0) {
-          const finalText = sanitizeAssistantText(assistantMessage.content);
+          const finalText = sanitizeAssistantText(assistantMessage.content, this.language);
           this.send({ type: "assistant_text", text: finalText });
           await appendMessage(this.conversationId, "assistant", finalText).catch((err) =>
             console.error("[session] appendMessage(assistant) failed", err)
@@ -341,7 +389,7 @@ export class Session {
             this.history.push({
               role: "tool",
               tool_call_id: call.id,
-              content: JSON.stringify({ ok: false, message: "Waiting for the user's confirmation." }),
+              content: JSON.stringify({ ok: false, message: messages.waitingForConfirmation }),
             });
             continue;
           }
@@ -357,7 +405,7 @@ export class Session {
           // an "ask, don't call the tool again" instruction. See
           // docs/ARCHITECTURE.md.
           const pending = this.pendingConfirmation!;
-          const confirmText = CONFIRMATION_PROMPTS[pending.name]!(pending.args);
+          const confirmText = getConfirmationPrompt(this.language, pending.name)!(pending.args);
           this.history.push({ role: "assistant", content: confirmText });
           this.send({ type: "assistant_text", text: confirmText });
           await appendMessage(this.conversationId, "assistant", confirmText).catch((err) =>
@@ -371,14 +419,14 @@ export class Session {
       recordUsage(this.userId, {}).catch(() => {});
     } catch (err) {
       // Both checks catch the exhausted-retries case too (see llm.ts) — these
-      // are known, expected occasional failures (Groq's Llama 3.3 tool-call
-      // generation quirk, or genuine rate limiting), not mystery bugs, so give
-      // a more actionable message than the generic fallback.
+      // are known, expected occasional failures (a malformed-tool-call
+      // generation quirk seen on Groq, or genuine rate limiting), not mystery
+      // bugs, so give a more actionable message than the generic fallback.
       const message = isRetryableToolUseFailure(err)
-        ? "I had trouble with that — try asking one thing at a time."
+        ? messages.toolUseFailedRetry
         : isGroqRateLimit(err)
-          ? rateLimitMessage(err)
-          : "Something went wrong processing that — try again.";
+          ? rateLimitMessage(err, this.language)
+          : messages.turnFailedGeneric;
       this.send({ type: "error", code: "llm_failed", message });
       console.error("[session] turn failed", err);
     } finally {
@@ -391,15 +439,16 @@ export class Session {
   // give the client anything to execute. Unlike dispatchToolCall, this resolves
   // synchronously within the same turn.
   private async handleServerTool(name: string, args: unknown, sourceMessageId?: string): Promise<ToolResult> {
+    const messages = getMessages(this.language);
     if (name === "remember_preference") {
       const parsed = z.object({ fact: z.string().min(3) }).safeParse(args);
-      if (!parsed.success) return { ok: false, message: "That didn't look like a fact I could save." };
+      if (!parsed.success) return { ok: false, message: messages.factNotSaved };
       try {
         await saveMemoryFact(this.userId, parsed.data.fact, sourceMessageId);
-        return { ok: true, message: "Got it, I'll remember that." };
+        return { ok: true, message: messages.factSaved };
       } catch (err) {
         console.error("[session] saveMemoryFact failed", err);
-        return { ok: false, message: "Couldn't save that right now." };
+        return { ok: false, message: messages.factSaveFailed };
       }
     }
     return { ok: false, message: `Unknown server tool "${name}".` };
@@ -416,7 +465,7 @@ export class Session {
               db.toolInvocation
                 .update({ where: { id: invocation.id }, data: { status: "timeout", completedAt: new Date() } })
                 .catch(() => {});
-              resolve({ ok: false, message: "Tool timed out" });
+              resolve({ ok: false, message: getMessages(this.language).toolTimedOut });
             }, TOOL_TIMEOUT_OVERRIDES[name] ?? TOOL_TIMEOUT_MS);
 
             this.pendingCalls.set(callId, {

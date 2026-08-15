@@ -6,21 +6,19 @@ import { ConsentScreen } from "./components/ConsentScreen";
 import { LoginScreen } from "./components/LoginScreen";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { ConversationView } from "./components/ConversationView";
+import { PortalGrid } from "./components/PortalGrid";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { HelpPanel } from "./components/HelpPanel";
 import { VoiceOrb } from "./components/VoiceOrb";
+import { BotMascot } from "./components/BotMascot";
 import { MicButton } from "./components/MicButton";
 import { Particles } from "./components/Particles";
+import { useDictionary } from "./i18n";
 import type { MicState } from "./state/store";
 
-const ORB_LABELS: Record<MicState, string> = {
-  idle: "Press Ctrl+Shift+Space to talk",
-  listening: "Listening…",
-  thinking: "Thinking…",
-  speaking: "Speaking…",
-};
-
 export function App() {
+  const t = useDictionary();
+  const ORB_LABELS: Record<MicState, string> = t.orbLabels;
   const [consented, setConsented] = useState<boolean | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -33,6 +31,7 @@ export function App() {
     turns,
     lastError,
     setLoggedIn,
+    setLanguage,
     setConnectionStatus,
     setMicState,
     pushTurn,
@@ -66,7 +65,10 @@ export function App() {
 
   useEffect(() => {
     window.jarvis.consent.hasConsented().then(setConsented);
-    window.jarvis.auth.getSession().then((s) => setLoggedIn(s.loggedIn));
+    window.jarvis.auth.getSession().then((s) => {
+      setLoggedIn(s.loggedIn);
+      setLanguage(s.language);
+    });
 
     isMicPermissionGranted().then((granted) => setMicPermissionWarning(!granted));
 
@@ -95,7 +97,7 @@ export function App() {
     window.jarvis.conversation.onAssistantText((text) => {
       pushTurn({ role: "assistant", text });
       setMicState("speaking");
-      ttsEngine.current.speak(text).then(() => {
+      ttsEngine.current.speak(text, useAppStore.getState().language).then(() => {
         setMicState("idle");
         window.jarvis.conversation.setActive(false);
       });
@@ -126,7 +128,7 @@ export function App() {
     return (
       <>
         {aurora}
-        <div className="app-loading">Loading…</div>
+        <div className="app-loading">{t.app.loading}</div>
       </>
     );
   }
@@ -161,19 +163,19 @@ export function App() {
           />
           <div className="header-links">
             <button className="link-button" onClick={() => setShowHelp(true)}>
-              What can I ask?
+              {t.app.whatCanIAsk}
             </button>
             <button className="link-button" onClick={() => setShowSettings(true)}>
-              Settings
+              {t.app.settingsLink}
             </button>
           </div>
         </header>
 
         {micPermissionWarning && (
           <div className="warning-banner">
-            Microphone access is blocked.{" "}
+            {t.app.micBlocked}{" "}
             <button className="link-button" onClick={() => window.jarvis.shell.openMicSettings()}>
-              Open Windows mic settings
+              {t.app.openMicSettings}
             </button>
           </div>
         )}
@@ -181,15 +183,18 @@ export function App() {
         {lastError && <div className="error-banner">{lastError.message}</div>}
 
         <div className="orb-stage">
-          <VoiceOrb state={micState} />
+          <div className="orb-click-wrap">
+            <VoiceOrb state={micState} />
+            <MicButton micState={micState} onClick={toggleMic} />
+            <BotMascot />
+          </div>
           <div className={`orb-label${micState !== "idle" ? " active" : ""}`}>
             <span className="dot" />
             <span>{ORB_LABELS[micState]}</span>
           </div>
-          <MicButton micState={micState} onClick={toggleMic} />
         </div>
 
-        <ConversationView turns={turns} />
+        {turns.length === 0 ? <PortalGrid /> : <ConversationView turns={turns} />}
 
         {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
         {showHelp && <HelpPanel onClose={() => setShowHelp(false)} />}

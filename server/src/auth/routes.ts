@@ -8,6 +8,8 @@ import { issueWsTicket } from "./wsTicket.js";
 import { requireAuth, type AuthedRequest } from "./middleware.js";
 import { encryptApiKey } from "../crypto.js";
 import { env } from "../env.js";
+import { SUPPORTED_LANGUAGES } from "../i18n/languages.js";
+import { asyncHandler } from "../asyncHandler.js";
 
 export const authRouter = Router();
 
@@ -38,13 +40,13 @@ async function upsertDevice(
   });
 }
 
-async function issueSessionTokens(userId: string, deviceId: string) {
+async function issueSessionTokens(userId: string, deviceId: string, language: string) {
   const accessToken = signAccessToken({ userId, deviceId });
   const refresh = await issueRefreshToken(userId, deviceId);
-  return { accessToken, refreshToken: refresh.raw, expiresIn: env.jwtAccessTtlSeconds };
+  return { accessToken, refreshToken: refresh.raw, expiresIn: env.jwtAccessTtlSeconds, language };
 }
 
-authRouter.post("/signup", async (req, res) => {
+authRouter.post("/signup", asyncHandler(async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
@@ -67,10 +69,10 @@ authRouter.post("/signup", async (req, res) => {
   const user = await db.user.create({ data: { email, passwordHash } });
   await upsertDevice(user.id, deviceId, deviceName, platform, capabilities);
 
-  res.status(201).json(await issueSessionTokens(user.id, deviceId));
-});
+  res.status(201).json(await issueSessionTokens(user.id, deviceId, user.language));
+}));
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", asyncHandler(async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
@@ -85,10 +87,10 @@ authRouter.post("/login", async (req, res) => {
   }
 
   await upsertDevice(user.id, deviceId, deviceName, platform, capabilities);
-  res.json(await issueSessionTokens(user.id, deviceId));
-});
+  res.json(await issueSessionTokens(user.id, deviceId, user.language));
+}));
 
-authRouter.post("/refresh", async (req, res) => {
+authRouter.post("/refresh", asyncHandler(async (req, res) => {
   const parsed = z.object({ refreshToken: z.string() }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request" });
@@ -101,43 +103,78 @@ authRouter.post("/refresh", async (req, res) => {
     return;
   }
 
+  const user = await db.user.findUnique({ where: { id: rotated.userId }, select: { language: true } });
   const accessToken = signAccessToken({ userId: rotated.userId, deviceId: rotated.deviceId });
   res.json({
     accessToken,
     refreshToken: rotated.issued.raw,
     expiresIn: env.jwtAccessTtlSeconds,
+    language: user?.language ?? "en",
   });
-});
+}));
 
 // Exchanged for a short-lived, single-use ticket used only to open the WebSocket —
 // see auth/wsTicket.ts for why this indirection exists instead of putting the JWT
 // directly in the wss:// URL.
-authRouter.post("/ws-ticket", requireAuth, async (req: AuthedRequest, res) => {
-  const ticket = await issueWsTicket(req.auth!);
-  res.json({ ticket });
-});
+authRouter.post(
+  "/ws-ticket",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const ticket = await issueWsTicket(req.auth!);
+    res.json({ ticket });
+  })
+);
 
-authRouter.post("/logout", requireAuth, async (req: AuthedRequest, res) => {
-  await revokeAllForDevice(req.auth!.userId, req.auth!.deviceId);
-  res.status(204).end();
-});
+authRouter.post(
+  "/logout",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    await revokeAllForDevice(req.auth!.userId, req.auth!.deviceId);
+    res.status(204).end();
+  })
+);
 
 // BYOK: lets a user supply their own Groq key so the shared daily cap no longer
 // applies to them (see rateLimit.ts). Stored encrypted at rest (AES-256-GCM).
-authRouter.put("/me/groq-key", requireAuth, async (req: AuthedRequest, res) => {
-  const parsed = z.object({ apiKey: z.string().min(10) }).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "invalid_request" });
-    return;
-  }
-  await db.user.update({
-    where: { id: req.auth!.userId },
-    data: { groqApiKeyEnc: encryptApiKey(parsed.data.apiKey) },
-  });
-  res.status(204).end();
-});
+authRouter.put(
+  "/me/groq-key",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const parsed = z.object({ apiKey: z.string().min(10) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_request" });
+      return;
+    }
+    await db.user.update({
+      where: { id: req.auth!.userId },
+      data: { groqApiKeyEnc: encryptApiKey(parsed.data.apiKey) },
+    });
+    res.status(204).end();
+  })
+);
 
-authRouter.delete("/me/groq-key", requireAuth, async (req: AuthedRequest, res) => {
-  await db.user.update({ where: { id: req.auth!.userId }, data: { groqApiKeyEnc: null } });
-  res.status(204).end();
-});
+authRouter.delete(
+  "/me/groq-key",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    await db.user.update({ where: { id: req.auth!.userId }, data: { groqApiKeyEnc: null } });
+    res.status(204).end();
+  })
+);
+
+// See i18n/languages.ts for why this is a fixed 8-language allowlist, not any
+// arbitrary string — a language the LLM isn't validated on would silently
+// degrade tool-calling reliability with no way to test for it.
+authRouter.put(
+  "/me/language",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const parsed = z.object({ language: z.enum(SUPPORTED_LANGUAGES) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
+      return;
+    }
+    await db.user.update({ where: { id: req.auth!.userId }, data: { language: parsed.data.language } });
+    res.status(204).end();
+  })
+);

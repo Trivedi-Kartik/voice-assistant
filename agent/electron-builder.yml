@@ -6,6 +6,13 @@ directories:
 files:
   - dist/**/*
   - package.json
+# Real bug, caught via actually launching the app for the first time this
+# session: buildResources (build/) only ever fed the installer/exe icon —
+# it was never bundled as a runtime resource, so trayMenu.ts's icon.png
+# path resolution has been broken in every packaged build too, not just
+# dev. This copies it to resources/icon.png at runtime; see trayMenu.ts.
+extraResources:
+  - build/icon.png
 win:
   target: nsis
   artifactName: ${productName}-Setup-${version}.${ext}
