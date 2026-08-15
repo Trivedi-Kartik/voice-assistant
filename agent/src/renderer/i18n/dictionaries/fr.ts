@@ -49,6 +49,7 @@ export const fr: Dictionary = {
       "C'est une bêta précoce. Des choses peuvent ne pas fonctionner, et l'assistant peut parfois mal te comprendre.",
     ],
     accept: "J'ai compris, continuer",
+    privacyPolicyLink: "Lire notre politique de confidentialité",
   },
   settings: {
     heading: "Paramètres",
@@ -68,6 +69,7 @@ export const fr: Dictionary = {
     myAppsHint: 'Applis que tu as ajoutées en le demandant à Karvix (par ex. "ajoute Photoshop aux applis que je peux ouvrir"). Seulement sur cet appareil.',
     remove: "Supprimer",
     noneAddedYet: "Aucune ajoutée pour l'instant.",
+    privacyPolicyLink: "Politique de confidentialité",
     close: "Fermer",
   },
   help: {

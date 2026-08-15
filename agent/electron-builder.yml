@@ -10,16 +10,33 @@ files:
 # session: buildResources (build/) only ever fed the installer/exe icon —
 # it was never bundled as a runtime resource, so trayMenu.ts's icon.png
 # path resolution has been broken in every packaged build too, not just
-# dev. This copies it to resources/icon.png at runtime; see trayMenu.ts.
+# dev. Second real bug, caught by actually running the packaged AppImage:
+# the bare-string form below copies to resources/build/icon.png (preserving
+# the source path), NOT resources/icon.png as trayMenu.ts assumes — the
+# explicit from/to form is required to flatten it.
 extraResources:
-  - build/icon.png
+  - from: build/icon.png
+    to: icon.png
 win:
   target: nsis
   artifactName: ${productName}-Setup-${version}.${ext}
 nsis:
   oneClick: false
-  allowToChangeInstallDirectory: true
+  # Real bug, caught by actually running `npm run package` for the first time
+  # in this project's history: this property name was wrong
+  # (allowToChangeInstallDirectory isn't a valid electron-builder 25.x nsis
+  # option — the schema validation rejected the whole config, blocking
+  # packaging on BOTH platforms, not just Windows). Correct name below.
+  allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
+# AppImage, not .deb — no install step needed, matches this launch's "hand a
+# file to a small set of invited testers" scope. electron-builder generates
+# the full icon set from build/icon.png (already 1024x1024, no new asset
+# needed) — same buildResources dir the win: target already uses.
+linux:
+  target: AppImage
+  artifactName: ${productName}-${version}.${ext}
+  category: Utility
 publish:
   provider: github
   owner: Trivedi-Kartik

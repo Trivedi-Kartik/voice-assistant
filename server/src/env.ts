@@ -16,4 +16,8 @@ export const env = {
   refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 30),
   byokEncryptionKey: required("BYOK_ENCRYPTION_KEY"),
   dailyTurnCap: Number(process.env.DAILY_TURN_CAP ?? 25),
+  // Optional, not required() — monitoring is a nice-to-have, not something
+  // that should stop the server from starting for local dev or if it's
+  // simply not configured yet. See index.ts.
+  sentryDsn: process.env.SENTRY_DSN,
 };

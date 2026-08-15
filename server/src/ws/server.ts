@@ -1,4 +1,5 @@
 import type { Server as HttpServer } from "node:http";
+import * as Sentry from "@sentry/node";
 import { WebSocketServer, type WebSocket } from "ws";
 import { consumeWsTicket } from "../auth/wsTicket.js";
 import { db } from "../db.js";
@@ -32,6 +33,7 @@ export function attachWsServer(httpServer: HttpServer): void {
     // no Express error middleware to forward to.
     handleConnection(ws, req).catch((err) => {
       console.error("[ws] connection setup failed", err);
+      Sentry.captureException(err);
       ws.close(1011, "internal_error");
     });
   });

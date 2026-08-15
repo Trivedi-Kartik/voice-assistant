@@ -4,6 +4,69 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-15 — Switched hosting target: Fly.io → Render
+
+- **Why:** Fly.io deprecated its free "Hobby" allowance in 2024; its current
+  signup/billing policy could not be confirmed as genuinely card-free from
+  outside an account (checked its own docs and pricing pages directly, got
+  inconclusive/conflicting answers) — a real problem given "free only, nothing
+  paid" was an explicit, non-negotiable requirement for this launch. Should
+  have verified this before building the Fly deploy plan in the first place,
+  not after.
+- Confirmed Render's free tier directly against its own docs (not secondary
+  listicles): supports WebSocket connections on the free plan (an active
+  connection counts as activity, preventing spin-down), 750 free instance
+  hours/month, and — confirmed against the user's own existing free Render
+  account — no credit card required.
+- `server/fly.toml` removed. New `render.yaml` Blueprint at the repo root
+  (Render's convention — not inside `server/`), using `rootDir: ./server` to
+  scope the build to this monorepo's backend, reusing `server/Dockerfile`
+  unchanged. Same scale-to-zero/cold-start trade-off as the original Fly
+  plan, just via Render's 15-minute idle timeout instead of Fly's
+  `auto_stop_machines`.
+- `docs/SETUP.md`'s deploy section rewritten for Render's dashboard-driven
+  Blueprint flow (connect repo → Render detects `render.yaml` → prompts once
+  for the `sync: false` secrets) in place of the `fly launch`/`fly secrets
+  set`/`fly deploy` CLI flow.
+
+## 2026-08-15 — Go-live prep: small invited beta, free-tier only
+
+- **Scope, decided explicitly:** a small personally-invited beta (not open
+  public signup) on free-tier infra only — no code-signing cert, no login
+  brute-force protection, no formal ToS review this round; all three
+  explicitly deferred, see `docs/ARCHITECTURE.md` "Security / privacy."
+- `server/fly.toml`: real app name (was a placeholder), and switched to
+  scale-to-zero (`auto_stop_machines = "stop"`, `min_machines_running = 0`)
+  to stay inside Fly's free allowance for low, intermittent beta traffic —
+  trades a ~1-2s cold start after idle periods for zero always-on cost.
+- Added `server/.dockerignore` (never existed — `.env`/`node_modules`/`.git`
+  had nothing stopping them from entering the Docker build context).
+- New `GET /privacy` (`server/src/privacyPolicy.ts`) — a real, honest,
+  plain-language privacy policy, linked from the consent screen and
+  Settings. Closes the long-dangling `ConsentScreen.tsx` reference to an
+  ARCHITECTURE.md section that never existed until now.
+- `@sentry/node` wired in (`server/src/index.ts`), optional via `SENTRY_DSN`
+  — feeds today's earlier crash-safety guards (`unhandledRejection`/
+  `uncaughtException`/global Express error middleware) so errors are
+  actually surfaced, not just logged into the void. Free tier (5k events/mo).
+- `agent/electron-builder.yml`: added a Linux `AppImage` target (no install
+  step — simplest for handing a file to a few invited testers). Building and
+  running it for the first time surfaced two real, pre-existing bugs that
+  had never been caught because packaging had never actually been run
+  before: (1) `nsis.allowToChangeInstallDirectory` isn't a valid
+  electron-builder 25.x property (schema validation rejected the *entire*
+  config, blocking packaging on both platforms, not just Linux) — correct
+  name is `allowToChangeInstallationDirectory`; (2) the bare-string
+  `extraResources: [build/icon.png]` copies to `resources/build/icon.png`
+  (preserving the source path), not `resources/icon.png` as
+  `trayMenu.ts` assumes — needed the explicit `{from, to}` form to flatten
+  it. Verified end-to-end: built the AppImage on this machine, ran it
+  (`--appimage-extract-and-run`, this sandbox has no FUSE), confirmed the
+  tray icon now loads with no error.
+- Documented `JWT_SECRET` generation in `docs/SETUP.md` (`openssl rand
+  -base64 48`) — previously only `BYOK_ENCRYPTION_KEY` had a real generation
+  command; `JWT_SECRET` just said "some long random string."
+
 ## 2026-08-15 — Forced LLM migration: Llama 3.3 → `openai/gpt-oss-120b`
 
 - **Not a choice — a deadline:** Groq decommissioned `llama-3.3-70b-versatile`

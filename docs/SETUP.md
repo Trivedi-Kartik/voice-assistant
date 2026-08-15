@@ -22,9 +22,15 @@ Fill in `.env`:
 GROQ_API_KEY=your_groq_key
 DATABASE_URL=postgresql://...   # Neon pooled connection string
 REDIS_URL=rediss://...          # Upstash Redis URL
-JWT_SECRET=some_long_random_string
+JWT_SECRET=some_long_random_string  # generate a real one, see below — never reuse the dev placeholder
 BYOK_ENCRYPTION_KEY=            # base64-encoded 32 random bytes, see below
 DAILY_TURN_CAP=25
+SENTRY_DSN=                     # optional — error monitoring, free tier at sentry.io; leave blank to skip
+```
+
+Generate `JWT_SECRET` (any long random string works — this is one easy way):
+```bash
+openssl rand -base64 48
 ```
 
 Generate `BYOK_ENCRYPTION_KEY`:
@@ -68,14 +74,34 @@ on first run; acceptable for early/invited users, revisit before a broader launc
 
 ## 5. Deploying the backend
 
-```bash
-cd server
-fly launch    # first time only — creates the Fly app from fly.toml
-fly secrets set GROQ_API_KEY=... DATABASE_URL=... REDIS_URL=... JWT_SECRET=... BYOK_ENCRYPTION_KEY=...
-fly deploy
-```
-Then point the packaged client's `.env` (`SERVER_WS_URL`/`SERVER_HTTP_URL`) at your
-`https://your-app.fly.dev` domain before building the installer for real users.
+Hosted on [Render](https://render.com)'s free tier — confirmed card-free and
+supports WebSocket connections on the free plan (an active WS connection
+counts as activity, so it won't spin the service down mid-conversation).
+Switched from an earlier Fly.io plan once Fly's current signup/billing policy
+couldn't be confirmed as genuinely free without a card (see
+`docs/CHANGELOG.md`).
+
+1. Push this repo to GitHub (Render deploys from a connected repo, not a
+   local CLI push).
+2. In the Render dashboard: **New → Blueprint**, connect this repo. Render
+   detects `render.yaml` at the repo root and proposes the `karvix-server`
+   web service (Docker, `server/` as its root directory, free plan,
+   Singapore region).
+3. Render prompts you once, during this Blueprint creation step, for every
+   secret marked `sync: false` in `render.yaml`: `GROQ_API_KEY`,
+   `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `BYOK_ENCRYPTION_KEY`, and
+   optionally `SENTRY_DSN`. Never commit real values for these — `render.yaml`
+   only carries the key names.
+4. Deploy. Render gives you a `https://karvix-server.onrender.com`-style URL
+   (or whatever it ends up naming the service) once live.
+
+Then point the packaged client's `.env` (`SERVER_WS_URL`/`SERVER_HTTP_URL`) at
+that URL (`https://...` / `wss://...`) before building the installer for real
+users.
+
+Free tier spins the service down after 15 minutes of idle — same "~1-2s cold
+start on the first message after a quiet period" trade-off the original Fly
+plan was designed around, so no other change was needed to accommodate it.
 
 ## Troubleshooting
 

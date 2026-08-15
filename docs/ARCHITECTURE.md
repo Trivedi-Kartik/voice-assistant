@@ -448,6 +448,45 @@ duplicate rather than import across a package boundary).
   — when present, the cap is lifted entirely for that user. This is the pressure
   valve that avoids needing Stripe/billing in v1.
 
+## Security / privacy
+
+`ConsentScreen.tsx` has pointed at this section since before it existed —
+closing that dangling reference now, ahead of the first invited-beta launch.
+
+- **Auth**: see "Auth flow" above — JWT access tokens (15min default TTL) +
+  rotating refresh tokens with theft detection (reuse of an already-rotated
+  token revokes the whole device chain), bcrypt-hashed passwords (never
+  stored plain).
+- **BYOK Groq keys** are encrypted at rest, AES-256-GCM (`server/src/crypto.ts`),
+  not stored plaintext.
+- **The in-app consent screen** (`ConsentScreen.tsx`) is a UX gate — it makes
+  sure a user has actually seen and acknowledged what the app does before
+  first use. It is not a legal document. The actual privacy policy is served
+  at `GET /privacy` (`server/src/privacyPolicy.ts`) and linked from both the
+  consent screen and Settings — what's actually collected (voice audio,
+  transcripts, screenshots/clipboard *only* on explicit confirmation), which
+  third party processes it (Groq) and why, and how to request deletion.
+- **Monitoring**: `@sentry/node` (optional — only activates if `SENTRY_DSN`
+  is set, see `server/src/env.ts`), feeding the crash-safety guards in
+  `index.ts`/`ws/server.ts` (the `unhandledRejection`/`uncaughtException`
+  listeners and the global Express error middleware) so "logged, kept
+  running" also means "the team actually finds out."
+
+**Deliberately deferred for this round** (a small, personally-invited beta,
+not open public signup — revisit before any broader/public launch):
+- No code-signing certificate for the Windows installer — unsigned means
+  Windows SmartScreen warns on first run. Acceptable when every user
+  personally trusts whoever sent them the installer; not once strangers can
+  download it.
+- No login rate-limiting / brute-force / bot protection on `/auth/*` beyond
+  bcrypt's own cost factor — the daily-turn-cap abuse guard
+  (`server/src/rateLimit.ts`) protects Groq quota, not the login endpoint
+  itself, from credential stuffing.
+- No formal legal review of the privacy policy — it's an honest,
+  plain-language description of what the app actually does, written for
+  people who know the person running this beta personally, not a substitute
+  for real legal review before a public launch.
+
 ## Current limitations (intentional)
 
 - Only 3 client-executed tools ship: `open_app`, `web_search`, `open_url` — the

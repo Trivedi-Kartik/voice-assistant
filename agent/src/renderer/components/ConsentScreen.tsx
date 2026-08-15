@@ -26,6 +26,11 @@ export function ConsentScreen({ onAccept }: { onAccept: () => void }) {
         <button onClick={accept} disabled={accepting}>
           {accepting ? "…" : t.consent.accept}
         </button>
+        <p className="hint">
+          <button type="button" className="link-button" onClick={() => window.jarvis.shell.openPrivacyPolicy()}>
+            {t.consent.privacyPolicyLink}
+          </button>
+        </p>
       </div>
     </div>
   );

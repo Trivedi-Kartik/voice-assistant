@@ -112,6 +112,9 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         )}
       </section>
 
+      <button type="button" className="link-button" onClick={() => window.jarvis.shell.openPrivacyPolicy()}>
+        {t.settings.privacyPolicyLink}
+      </button>
       <button className="link-button" onClick={onClose}>
         {t.settings.close}
       </button>

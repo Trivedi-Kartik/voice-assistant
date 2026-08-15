@@ -49,6 +49,7 @@ export const hi: Dictionary = {
       "यह एक शुरुआती बीटा है। चीज़ें कभी-कभी गड़बड़ हो सकती हैं, और असिस्टेंट कभी-कभी आपकी बात ठीक से न समझे।",
     ],
     accept: "समझ गया, आगे बढ़ें",
+    privacyPolicyLink: "हमारी गोपनीयता नीति पढ़ें",
   },
   settings: {
     heading: "सेटिंग्स",
@@ -68,6 +69,7 @@ export const hi: Dictionary = {
     myAppsHint: 'वे ऐप्स जो आपने Karvix से कहकर जुड़वाए हैं (जैसे "Photoshop को एक ऐसे ऐप के तौर पर जोड़ो जिसे मैं खोल सकूँ")। यह सिर्फ़ इसी डिवाइस पर लागू है।',
     remove: "हटाएँ",
     noneAddedYet: "अभी तक कुछ नहीं जोड़ा गया।",
+    privacyPolicyLink: "गोपनीयता नीति",
     close: "बंद करें",
   },
   help: {
