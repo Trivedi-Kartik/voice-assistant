@@ -2,7 +2,17 @@ import { getDeviceId, getDeviceName } from "./deviceId.js";
 import { loadRefreshToken, saveRefreshToken, clearRefreshToken } from "./tokenStore.js";
 import { DEVICE_CAPABILITIES } from "../deviceCapabilities.js";
 
-export const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "http://localhost:8080";
+// Real bug, caught by actually tracing what a packaged build does (not
+// assumed): agent/.env is never bundled into a packaged app
+// (electron-builder.yml's `files:` only includes dist/**/* and
+// package.json), and plain `tsc` doesn't inline env vars at build time —
+// editing .env before `npm run package`, as docs/SETUP.md used to say,
+// silently did nothing; the shipped installer still fell back to
+// localhost, broken for every real user. The fallback below IS the actual
+// production default now — this is what "baked in at build time" means in
+// practice. Local dev is unaffected: dev's own .env still sets this env var
+// explicitly, which still wins over the fallback.
+export const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "https://karvix-server.onrender.com";
 
 // Was hardcoded to "windows" regardless of the actual OS — harmless while
 // the client only ran on Windows, but wrong once Linux support landed.

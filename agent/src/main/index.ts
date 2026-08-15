@@ -1,9 +1,11 @@
 // Must be the very first import: authManager.ts/connection.ts read
-// process.env.SERVER_HTTP_URL/SERVER_WS_URL at module-load time, so .env has to
-// be loaded before those modules are required. Electron does NOT auto-load .env
-// files the way the server's dotenv/config import does — this is dev-only (see
-// docs/SETUP.md "Packaging" for why the packaged installer needs the production
-// URL baked in at build time instead of relying on this file existing at runtime).
+// process.env.SERVER_HTTP_URL/SERVER_WS_URL at module-load time, so .env has
+// to be loaded (when present) before those modules are required. Dev-only in
+// practice: .env is never bundled into a packaged app (see
+// electron-builder.yml's `files:`), so a packaged build always falls through
+// to authManager.ts/connection.ts's own hardcoded production-URL defaults —
+// verified by actually tracing the compiled output, not assumed. See
+// docs/SETUP.md "Packaging."
 import "dotenv/config";
 import { app, BrowserWindow } from "electron";
 import { autoUpdater } from "electron-updater";
