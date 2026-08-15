@@ -4,6 +4,33 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-15 — Fixed the Docker build/runtime: two real bugs, never caught before
+
+`server/Dockerfile` had never been successfully built until the first real
+Render deploy attempt just now. Both bugs below were latent since whenever
+this Dockerfile was first written — actually building and *running* the
+image (not just reading it) is what surfaced them:
+
+- **Build failure:** `npm install` runs Prisma's own `postinstall: prisma
+  generate` hook automatically, but `prisma/schema.prisma` hadn't been
+  copied into the image yet at that point in either build stage (that
+  happened later, at `COPY . .` / a later `COPY prisma ./prisma`) — so
+  postinstall failed and killed the whole build immediately, in both
+  stages, every time. Fixed by copying just `prisma/schema.prisma` before
+  `npm install` in both stages.
+- **Runtime failure, would have been silent otherwise:** even after the
+  build succeeded, actually running the container and hitting a real
+  DB-touching route (not just `/health`, which doesn't touch Postgres)
+  crashed with `Error loading shared library libssl.so.1.1: No such file or
+  directory`. Root cause: `node:20-alpine` ships `libssl.so.3` (OpenSSL 3.x)
+  as a base dependency but no `openssl` CLI binary — Prisma's engine-
+  selection script uses that binary to detect which OpenSSL build to
+  bundle, and silently guessed wrong ("1.1.x") when it found none present.
+  Fixed with `RUN apk add --no-cache openssl` in both stages, so detection
+  is accurate instead of a wrong guess. Verified with a real local `docker
+  build` + `docker run` + an actual DB-touching `/auth/login` request
+  against real Neon credentials, not just a clean build log.
+
 ## 2026-08-15 — Switched hosting target: Fly.io → Render
 
 - **Why:** Fly.io deprecated its free "Hobby" allowance in 2024; its current
