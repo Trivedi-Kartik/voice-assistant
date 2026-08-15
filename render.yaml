@@ -1,0 +1,40 @@
+# Render Blueprint — deploys server/ as a Docker-based web service on
+# Render's free tier. Switched from Fly.io (see docs/CHANGELOG.md): Fly
+# deprecated its free "Hobby" allowance in 2024 and its current signup/billing
+# policy couldn't be confirmed as genuinely free without a credit card, which
+# was a hard requirement for this launch. Render's free tier is confirmed
+# card-free (verified against Render's own docs, and against the user's own
+# existing free account) and supports WebSocket connections on the free plan
+# — an active WS connection counts as activity, so the same "scale to zero
+# when idle" trade-off from the original fly.toml still applies here (spins
+# down after 15 min idle, ~1min cold start on the next request).
+#
+# This file lives at the repo root (Render's convention), not inside server/
+# — rootDir below scopes the actual build to the server/ subdirectory of this
+# monorepo, same relationship fly.toml had when it lived inside server/.
+services:
+  - name: karvix-server
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore # closest to the region fly.toml originally targeted (bom/Mumbai)
+    rootDir: ./server
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+      # Render prompts for these once, during initial Blueprint creation in
+      # the dashboard — never hardcode real values here. See docs/SETUP.md.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: BYOK_ENCRYPTION_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false

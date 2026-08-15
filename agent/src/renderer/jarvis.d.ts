@@ -44,6 +44,7 @@ export interface JarvisApi {
   };
   shell: {
     openMicSettings(): void;
+    openPrivacyPolicy(): void;
   };
   customApps: {
     list(): Promise<{ name: string; openCommand: string; processName?: string }[]>;

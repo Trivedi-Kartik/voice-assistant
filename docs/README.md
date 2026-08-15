@@ -27,7 +27,7 @@ comes back to you.
  Electron Client (Windows, Linux — best-effort) — login, hotkey, mic capture, TTS, tool execution
       │  wss:// (authenticated per-user)
       ▼
- Node/TS Backend on Fly.io — auth, per-user session, Groq STT + tool-calling LLM
+ Node/TS Backend on Render — auth, per-user session, Groq STT + tool-calling LLM
       │                              │
       ▼                              ▼
  Neon Postgres (accounts,      Upstash Redis (ephemeral session

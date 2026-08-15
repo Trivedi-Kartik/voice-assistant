@@ -1,0 +1,12 @@
+# Never let the build context (Dockerfile's `COPY . .`) carry real secrets or
+# bloat into the image — .env has never been meant to leave this machine, and
+# even though the final stage only copies dist/prisma/node_modules/.prisma
+# out of the build stage, the build stage's own layer would otherwise still
+# contain it.
+.env
+.env.*
+node_modules
+dist
+release
+.git
+*.log

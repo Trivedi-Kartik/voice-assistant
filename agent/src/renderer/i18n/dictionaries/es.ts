@@ -49,6 +49,7 @@ export const es: Dictionary = {
       "Esta es una beta temprana. Puede que algo falle, y el asistente a veces puede malentenderte.",
     ],
     accept: "Entendido, continuar",
+    privacyPolicyLink: "Lee nuestra Política de Privacidad",
   },
   settings: {
     heading: "Configuración",
@@ -70,6 +71,7 @@ export const es: Dictionary = {
       'Apps que agregaste pidiéndoselo a Karvix (por ejemplo, "agrega Photoshop como una app que pueda abrir"). Solo en este dispositivo.',
     remove: "Quitar",
     noneAddedYet: "Todavía no has agregado ninguna.",
+    privacyPolicyLink: "Política de Privacidad",
     close: "Cerrar",
   },
   help: {

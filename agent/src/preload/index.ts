@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("jarvis", {
   },
   shell: {
     openMicSettings: () => ipcRenderer.send("shell:openMicSettings"),
+    openPrivacyPolicy: () => ipcRenderer.send("shell:openPrivacyPolicy"),
   },
   customApps: {
     list: () => ipcRenderer.invoke("customApps:list"),

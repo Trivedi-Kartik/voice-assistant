@@ -53,6 +53,7 @@ export const en: Dictionary = {
       "This is an early beta. Things may break, and the assistant may occasionally misunderstand you.",
     ],
     accept: "I understand, continue",
+    privacyPolicyLink: "Read our Privacy Policy",
   },
   settings: {
     heading: "Settings",
@@ -72,6 +73,7 @@ export const en: Dictionary = {
     myAppsHint: 'Apps you\'ve added by asking Karvix (e.g. "add Photoshop as an app I can open"). Only on this device.',
     remove: "Remove",
     noneAddedYet: "None added yet.",
+    privacyPolicyLink: "Privacy Policy",
     close: "Close",
   },
   help: {

@@ -1,5 +1,5 @@
 import { ipcMain, shell, type BrowserWindow } from "electron";
-import { authManager } from "../auth/authManager.js";
+import { authManager, SERVER_HTTP_URL } from "../auth/authManager.js";
 import type { Connection } from "../ws/connection.js";
 import { hasConsented, recordConsent } from "../consent.js";
 import { listCustomApps, removeCustomApp } from "../customApps/customAppStore.js";
@@ -72,6 +72,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
 
   ipcMain.on("shell:openMicSettings", () => {
     shell.openExternal("ms-settings:privacy-microphone");
+  });
+
+  ipcMain.on("shell:openPrivacyPolicy", () => {
+    shell.openExternal(`${SERVER_HTTP_URL}/privacy`);
   });
 
   // Viewing/removing custom apps (added via the add_custom_app tool, see

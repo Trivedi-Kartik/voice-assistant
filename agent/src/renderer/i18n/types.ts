@@ -62,6 +62,7 @@ export interface Dictionary {
     heading: string;
     bullets: string[];
     accept: string;
+    privacyPolicyLink: string;
   };
   settings: {
     heading: string;
@@ -80,6 +81,7 @@ export interface Dictionary {
     myAppsHint: string;
     remove: string;
     noneAddedYet: string;
+    privacyPolicyLink: string;
     close: string;
   };
   help: {

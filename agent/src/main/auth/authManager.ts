@@ -2,7 +2,7 @@ import { getDeviceId, getDeviceName } from "./deviceId.js";
 import { loadRefreshToken, saveRefreshToken, clearRefreshToken } from "./tokenStore.js";
 import { DEVICE_CAPABILITIES } from "../deviceCapabilities.js";
 
-const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "http://localhost:8080";
+export const SERVER_HTTP_URL = process.env.SERVER_HTTP_URL ?? "http://localhost:8080";
 
 // Was hardcoded to "windows" regardless of the actual OS — harmless while
 // the client only ran on Windows, but wrong once Linux support landed.

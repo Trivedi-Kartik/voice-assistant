@@ -1,10 +1,20 @@
 import http from "node:http";
+import * as Sentry from "@sentry/node";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import { env } from "./env.js";
 import { authRouter } from "./auth/routes.js";
 import { visionRouter } from "./vision/routes.js";
 import { attachWsServer } from "./ws/server.js";
+import { PRIVACY_POLICY_HTML } from "./privacyPolicy.js";
+
+// Optional — SENTRY_DSN is not a required() env var (see env.ts): the server
+// must still run fine locally or before monitoring is set up. Free tier
+// (5k events/month) is enough for a small invited beta.
+if (env.sentryDsn) {
+  Sentry.init({ dsn: env.sentryDsn });
+  console.log("[server] Sentry monitoring enabled");
+}
 
 // Real bug, confirmed live: a transient Neon Postgres connectivity blip during
 // /auth/refresh crashed the ENTIRE server, disconnecting every user over one
@@ -14,12 +24,15 @@ import { attachWsServer } from "./ws/server.js";
 // one 500, not an outage. These two process-level listeners are defense in
 // depth for anything that isn't (a WS handler throwing, a background timer,
 // etc.) — log and keep running, never exit, since one unexpected error should
-// never take down every other connected user.
+// never take down every other connected user. Also reported to Sentry (when
+// configured) so "kept running" doesn't silently mean "nobody ever finds out."
 process.on("unhandledRejection", (err) => {
   console.error("[fatal-guard] unhandled rejection (server kept running)", err);
+  Sentry.captureException(err);
 });
 process.on("uncaughtException", (err) => {
   console.error("[fatal-guard] uncaught exception (server kept running)", err);
+  Sentry.captureException(err);
 });
 
 const app = express();
@@ -27,6 +40,10 @@ app.use(cors());
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+app.get("/privacy", (_req, res) => {
+  res.type("html").send(PRIVACY_POLICY_HTML);
 });
 
 // Scoped per-router, not global: /vision needs a much larger body limit for
@@ -40,6 +57,7 @@ app.use("/vision", express.json({ limit: "25mb" }), visionRouter);
 // route (Express identifies error middleware by its 4-arg signature).
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error("[http] unhandled route error", err);
+  Sentry.captureException(err);
   if (!res.headersSent) res.status(500).json({ error: "internal_error" });
 });
 
