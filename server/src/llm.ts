@@ -22,7 +22,17 @@ export interface LlmStepResult {
   toolCalls: RequestedToolCall[];
 }
 
-const MODEL = "llama-3.3-70b-versatile";
+// llama-3.3-70b-versatile was decommissioned by Groq on 2026-08-16
+// (console.groq.com/docs/deprecations). Of Groq's two recommended
+// replacements, openai/gpt-oss-120b is the production model with confirmed
+// tool/function-calling support; qwen/qwen3.6-27b is explicitly marked
+// "preview — for evaluation purposes only" by Groq, with tool-calling
+// support undocumented — too risky to build this app's entire tool-dispatch
+// loop on. See docs/ARCHITECTURE.md "Known reliability limitation" — the
+// tool_use_failed retry logic below was tuned against Llama 3.3's specific
+// failure rate and needs re-verification against real usage on this model,
+// not assumed to carry over unchanged.
+const MODEL = "openai/gpt-oss-120b";
 
 // Without retrying, both failure modes below surfaced to users as an
 // intermittent "something went wrong" on completely valid requests — see

@@ -4,6 +4,29 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-08-15 — Forced LLM migration: Llama 3.3 → `openai/gpt-oss-120b`
+
+- **Not a choice — a deadline:** Groq decommissioned `llama-3.3-70b-versatile`
+  effective 2026-08-16 (console.groq.com/docs/deprecations). Of Groq's two
+  suggested replacements, picked `openai/gpt-oss-120b` (production model,
+  confirmed tool/function-calling support) over `qwen/qwen3.6-27b` (explicitly
+  marked "preview — evaluation purposes only" by Groq, tool-calling support
+  undocumented — too risky for this app's entire tool-dispatch loop to run on).
+- **Multi-language impact, flagged not silently absorbed:** the just-shipped
+  8-language feature (`en`/`hi`/`es`/`fr`/`de`/`it`/`pt`/`th`) was scoped to
+  Llama 3.3's officially-validated language list. OpenAI's own gpt-oss-120b
+  multilingual eval (MMMLU, 14 languages) covers Hindi, Spanish, French,
+  German, Italian, and Portuguese — but not Thai. Decision: kept Thai in the
+  supported list rather than removing it pre-emptively — not being in
+  OpenAI's flagship eval doesn't mean broken, and the plan is to verify it
+  with real Thai voice commands once possible, same empirical approach used
+  elsewhere in this project, revisiting only if it actually misbehaves.
+- Updated the retry-logic comments in `groqErrors.ts`/`llm.ts`/`ws/session.ts`
+  and `docs/ARCHITECTURE.md`'s "Known reliability limitation" section to stop
+  citing Llama 3.3-specific failure rates as current fact — the `tool_use_failed`
+  retry is kept (the failure shape is API-level, not model-specific) but its
+  actual rate on gpt-oss-120b is unverified until tested against real usage.
+
 ## 2026-08-11 — Linux compatibility, increment 1: `open_app`/`close_app`
 
 - **Audited what actually needed Windows-specific code first:**

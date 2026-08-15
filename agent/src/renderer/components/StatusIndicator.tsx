@@ -1,12 +1,5 @@
 import type { UiStatus } from "../state/store";
-
-const CONNECTION_LABEL: Record<UiStatus, string> = {
-  idle: "Not connected",
-  connecting: "Connecting…",
-  connected: "Connected",
-  reconnecting: "Reconnecting…",
-  error: "Connection lost",
-};
+import { useDictionary } from "../i18n";
 
 // Connection state only — mic state is now shown by the VoiceOrb, which is the
 // actual focal point of the screen. One small, finite set of states —
@@ -20,13 +13,16 @@ export function StatusIndicator({
   connectionStatus: UiStatus;
   onRetry: () => void;
 }) {
+  const t = useDictionary();
+  const connectionLabel: Record<UiStatus, string> = t.statusIndicator;
+
   return (
     <div className={`status-indicator status-${connectionStatus}`}>
       <span className="connection-dot" />
-      <span>{CONNECTION_LABEL[connectionStatus]}</span>
+      <span>{connectionLabel[connectionStatus]}</span>
       {connectionStatus === "error" && (
         <button onClick={onRetry} className="retry-button">
-          Retry connection
+          {t.statusIndicator.retryConnection}
         </button>
       )}
     </div>

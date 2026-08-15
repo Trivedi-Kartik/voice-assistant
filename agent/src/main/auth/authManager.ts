@@ -18,10 +18,12 @@ interface TokenResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  language: string;
 }
 
 interface Session {
   accessToken: string;
+  language: string;
 }
 
 // Holds the access token in main-process memory ONLY — it never crosses into the
@@ -67,6 +69,23 @@ class AuthManager {
 
   isLoggedIn(): boolean {
     return this.session !== null;
+  }
+
+  // Defaults to "en" when logged out — matches the server's own User.language
+  // default (server/prisma/schema.prisma), so callers never see undefined.
+  getLanguage(): string {
+    return this.session?.language ?? "en";
+  }
+
+  async setLanguage(language: string): Promise<void> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/me/language`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.session.accessToken}` },
+      body: JSON.stringify({ language }),
+    });
+    if (!res.ok) throw new Error("set_language_failed");
+    this.session.language = language;
   }
 
   async getWsTicket(): Promise<string> {
@@ -139,7 +158,7 @@ class AuthManager {
   }
 
   private applyTokens(data: TokenResponse): void {
-    this.session = { accessToken: data.accessToken };
+    this.session = { accessToken: data.accessToken, language: data.language };
     saveRefreshToken(data.refreshToken);
     this.scheduleProactiveRefresh(data.refreshToken, data.expiresIn);
   }

@@ -4,6 +4,13 @@ import { contextBridge, ipcRenderer } from "electron";
 // ever exposed directly — just this narrow, explicit set of calls. See
 // docs/ARCHITECTURE.md "Project structure".
 contextBridge.exposeInMainWorld("jarvis", {
+  // Plain string, not an IPC call — renderer needs this synchronously to
+  // decide which TTS engine to construct. See renderer/audio/ttsPlayback.ts.
+  platform: process.platform,
+  tts: {
+    speak: (text: string, language: string) => ipcRenderer.invoke("tts:speak", text, language),
+    stop: () => ipcRenderer.send("tts:stop"),
+  },
   consent: {
     hasConsented: () => ipcRenderer.invoke("consent:hasConsented"),
     record: () => ipcRenderer.invoke("consent:record"),
@@ -17,6 +24,9 @@ contextBridge.exposeInMainWorld("jarvis", {
     onSessionChanged: (cb: (payload: { loggedIn: boolean }) => void) => {
       ipcRenderer.on("auth:sessionChanged", (_e, payload) => cb(payload));
     },
+  },
+  settings: {
+    setLanguage: (language: string) => ipcRenderer.invoke("settings:setLanguage", language),
   },
   audio: {
     sendChunk: (base64: string) => ipcRenderer.send("audio:chunk", base64),

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { VoiceOrb } from "./VoiceOrb";
+import { useDictionary } from "../i18n";
 
 // Renderer never calls the auth API or holds tokens directly — it sends
 // credentials over IPC to main, which does the HTTPS call and keeps tokens out of
@@ -10,6 +11,7 @@ export function LoginScreen() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const t = useDictionary();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,7 +24,7 @@ export function LoginScreen() {
         await window.jarvis.auth.signup(email, password);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong — try again.");
+      setError(err instanceof Error ? err.message : t.login.genericError);
     } finally {
       setSubmitting(false);
     }
@@ -33,34 +35,34 @@ export function LoginScreen() {
       <div className="glass auth-card">
         <VoiceOrb state="idle" variant="small" />
         <div className="wordmark">Karvix</div>
-        <p className="subtitle">Sign in to talk to your assistant.</p>
+        <p className="subtitle">{t.login.subtitle}</p>
 
         <div className="tabs">
           <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>
-            Log in
+            {t.login.logInTab}
           </button>
           <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>
-            Sign up
+            {t.login.signUpTab}
           </button>
           <div className={`thumb${mode === "signup" ? " signup" : ""}`} />
         </div>
 
         <form onSubmit={submit}>
           <div className="field">
-            <label>Email</label>
+            <label>{t.login.emailLabel}</label>
             <input
               type="email"
-              placeholder="you@example.com"
+              placeholder={t.login.emailPlaceholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="field">
-            <label>Password</label>
+            <label>{t.login.passwordLabel}</label>
             <input
               type="password"
-              placeholder="Min 8 characters"
+              placeholder={t.login.passwordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               minLength={8}
@@ -69,17 +71,17 @@ export function LoginScreen() {
           </div>
           {error && <div className="error-banner">{error}</div>}
           <button type="submit" className="cta" disabled={submitting}>
-            {submitting ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
+            {submitting ? t.login.pleaseWait : mode === "login" ? t.login.logInTab : t.login.signUpTab}
           </button>
         </form>
         <p className="switch-line">
-          {mode === "login" ? "Need an account? " : "Already have an account? "}
+          {mode === "login" ? t.login.needAccount : t.login.alreadyHaveAccount}
           <button
             type="button"
             className="link-button"
             onClick={() => setMode(mode === "login" ? "signup" : "login")}
           >
-            {mode === "login" ? "Sign up" : "Log in"}
+            {mode === "login" ? t.login.signUpTab : t.login.logInTab}
           </button>
         </p>
       </div>

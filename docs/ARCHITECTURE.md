@@ -382,21 +382,28 @@ not the normal Prisma Client API — see the file comments in `memoryStore.ts`.
 
 ## Known reliability limitation: Groq tool-call generation failures
 
-Confirmed via repeated real testing (not hypothetical): Llama 3.3 on Groq
-occasionally produces a malformed tool call — literally text like
+Confirmed via repeated real testing (not hypothetical) on Llama 3.3, this app's
+model until Groq decommissioned it on 2026-08-16 (forced migration to
+`openai/gpt-oss-120b` — Groq's other suggested replacement, `qwen/qwen3.6-27b`,
+is explicitly a "preview, evaluation only" model with undocumented tool-calling
+support, too risky for this app's entire tool-dispatch loop): Llama 3.3
+occasionally produced a malformed tool call — literally text like
 `<function=open_app{...}</function>` instead of a proper structured call — and
-Groq's API rejects the whole completion with a 400 `tool_use_failed` error. This
-is generation-quality noise, not a deterministic bug in this codebase: identical
-requests succeed on a retry most of the time, and it happens more often on
+Groq's API rejected the whole completion with a 400 `tool_use_failed` error. This
+was generation-quality noise, not a deterministic bug in this codebase: identical
+requests succeeded on a retry most of the time, and it happened more often on
 compound requests ("open X and search Y") than single-action ones.
 `server/src/llm.ts` retries automatically (up to 6 attempts) when it detects this
-specific error, which measurably improves reliability but does not eliminate it
-— in testing, roughly an 80% single-attempt-success rate on the hardest compound
-case became ~80-90%+ with retries, not 100%. If a turn still fails after
-exhausting retries, the user gets a specific, actionable error ("try asking one
-thing at a time") rather than a generic failure. This is an upstream model/API
-reliability characteristic, not something fully fixable in application code —
-worth revisiting (e.g. a different tool-calling model) if it proves disruptive in
+specific error, which measurably improved reliability on Llama 3.3 but did not
+eliminate it — in testing, roughly an 80% single-attempt-success rate on the
+hardest compound case became ~80-90%+ with retries, not 100%. If a turn still
+fails after exhausting retries, the user gets a specific, actionable error ("try
+asking one thing at a time") rather than a generic failure. The retry logic is
+kept on gpt-oss-120b since the failure shape is API-level, not model-specific,
+but the actual failure rate on the new model is unverified — re-check via real
+usage, the same empirical-testing discipline used to find this in the first
+place. This is an upstream model/API reliability characteristic, not something
+fully fixable in application code — worth revisiting again if it proves disruptive in
 practice.
 
 ## Session management & isolation

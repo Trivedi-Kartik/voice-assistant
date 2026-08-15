@@ -1,27 +1,28 @@
 import { useMemo } from "react";
 
-const COLORS = ["#8b5cf6", "#ec4899", "#fb923c"];
-const COUNT = 14;
+const COLORS = ["#fb923c", "#ec4899", "#22d3ee", "#a855f7"];
+const COUNT = 18;
 
 interface ParticleSpec {
+  top: string;
   left: string;
   size: string;
   color: string;
   duration: string;
   delay: string;
-  drift: string;
 }
 
-// Purely decorative — drifting ambient sparks behind the aurora backdrop.
+// Purely decorative — sparse twinkling dust scattered across the whole
+// window, fixed in place (no drift/rise) — a still "deep space" field.
 // Randomized once per mount, not re-rolled on re-render.
 function randomSpecs(): ParticleSpec[] {
   return Array.from({ length: COUNT }, (_, i) => ({
+    top: `${Math.random() * 100}%`,
     left: `${Math.random() * 100}%`,
-    size: `${2 + Math.random() * 3}px`,
+    size: `${2 + Math.random() * 2}px`,
     color: COLORS[i % COLORS.length],
-    duration: `${11 + Math.random() * 12}s`,
-    delay: `${-Math.random() * 20}s`,
-    drift: `${Math.random() * 60 - 30}px`,
+    duration: `${4 + Math.random() * 4}s`,
+    delay: `${-Math.random() * 8}s`,
   }));
 }
 
@@ -35,12 +36,12 @@ export function Particles() {
           className="particle"
           style={
             {
+              top: p.top,
               left: p.left,
               "--s": p.size,
               "--c": p.color,
               "--d": p.duration,
               "--delay": p.delay,
-              "--drift": p.drift,
             } as React.CSSProperties
           }
         />

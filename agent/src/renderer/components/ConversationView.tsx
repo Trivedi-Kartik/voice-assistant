@@ -17,14 +17,6 @@ export function ConversationView({ turns }: { turns: Turn[] }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
-  if (turns.length === 0) {
-    return (
-      <div className="conversation-empty">
-        Try: "Open Chrome and search best pizza in Ahmedabad"
-      </div>
-    );
-  }
-
   return (
     <div className="conversation-view" ref={scrollRef}>
       {turns.map((turn, i) => {

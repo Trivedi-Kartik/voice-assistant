@@ -15,7 +15,7 @@ system. This is a real product multiple people sign up and use, not a demo — s
 
 You press a hotkey and speak → Electron client streams audio to your account's
 session on a hosted backend → the backend transcribes it (Groq Whisper) → an LLM
-(Groq Llama 3.3) decides whether to just reply, or call a **tool** (open an app /
+(`openai/gpt-oss-120b` on Groq) decides whether to just reply, or call a **tool** (open an app /
 search the web / open a URL) → if it's a tool call, the Electron client (which has
 real OS access) executes it → result goes back to the LLM → final spoken reply
 comes back to you.
@@ -34,7 +34,7 @@ comes back to you.
  devices, usage log)           buffer, per-user rate-limit counters)
       │
       ▼
- Groq API (Whisper STT + Llama 3.3)
+ Groq API (Whisper STT + openai/gpt-oss-120b)
 ```
 
 ## Project layout
@@ -49,7 +49,7 @@ karvix/
 │       ├── auth/               signup/login/refresh/ws-ticket, JWT + rotation
 │       ├── ws/                 per-connection Session, tool-calling loop
 │       ├── tools/schemas.ts    tool schemas offered to the LLM
-│       ├── stt.ts / llm.ts     Groq Whisper + Llama 3.3 tool-calling
+│       ├── stt.ts / llm.ts     Groq Whisper + gpt-oss-120b tool-calling
 │       └── rateLimit.ts        shared-key daily cap + BYOK bypass
 └── agent/                ← the "hands" — Electron app (Windows, Linux — best-effort)
     └── src/

@@ -14,7 +14,7 @@ const MAX_SHORT_RATE_LIMIT_WAIT_SECONDS = 5;
 // Only retries on rate limits — a genuinely corrupted/invalid audio file (Groq's
 // "could not process file") will just fail identically on retry, so that's left
 // to bubble up and get a distinct, actionable message in ws/session.ts instead.
-export async function transcribeAudio(apiKey: string, audioBuffer: Buffer): Promise<string> {
+export async function transcribeAudio(apiKey: string, audioBuffer: Buffer, language: string): Promise<string> {
   const groq = new Groq({ apiKey });
   for (let attempt = 1; ; attempt++) {
     try {
@@ -23,12 +23,13 @@ export async function transcribeAudio(apiKey: string, audioBuffer: Buffer): Prom
         model: "whisper-large-v3",
         // Real bug, reported from live use: with no language hint, Whisper
         // auto-detects the spoken language from the audio — and that
-        // detection can misfire on accented English (a known Whisper
-        // failure mode), producing a transcript in an entirely different
-        // language/script instead of English. Karvix is English-only
-        // everywhere else (system prompt, docs, UI) — force it explicitly
-        // rather than trusting per-utterance detection.
-        language: "en",
+        // detection can misfire on accented speech (a known Whisper failure
+        // mode), producing a transcript in an entirely different
+        // language/script than intended. Always force it explicitly from the
+        // user's own selected language (see i18n/languages.ts) rather than
+        // trusting per-utterance detection — same reasoning as the original
+        // English-only fix, just generalized to all 8 supported languages.
+        language,
       });
       return transcription.text.trim();
     } catch (err) {

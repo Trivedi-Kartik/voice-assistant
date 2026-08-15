@@ -4,17 +4,25 @@ export interface ToolActivity {
 }
 
 export interface JarvisApi {
+  platform: NodeJS.Platform;
+  tts: {
+    speak(text: string, language: string): Promise<void>;
+    stop(): void;
+  };
   consent: {
     hasConsented(): Promise<boolean>;
     record(): Promise<void>;
   };
   auth: {
-    getSession(): Promise<{ loggedIn: boolean }>;
+    getSession(): Promise<{ loggedIn: boolean; language: string }>;
     signup(email: string, password: string): Promise<{ loggedIn: boolean }>;
     login(email: string, password: string): Promise<{ loggedIn: boolean }>;
     logout(): Promise<void>;
     setGroqKey(apiKey: string): Promise<void>;
     onSessionChanged(cb: (payload: { loggedIn: boolean }) => void): void;
+  };
+  settings: {
+    setLanguage(language: string): Promise<void>;
   };
   audio: {
     sendChunk(base64: string): void;

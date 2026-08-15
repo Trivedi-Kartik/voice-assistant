@@ -22,6 +22,12 @@ model User {
   displayName     String?  @map("display_name")
   plan            String   @default("free") // 'free' | 'pro' (pro unused until billing exists)
   groqApiKeyEnc   Bytes?   @map("groq_api_key_enc") // AES-256-GCM ciphertext of user's own Groq key (BYOK)
+  // One of the 8 languages Meta officially validated Llama 3.3 70B on — see
+  // docs/ARCHITECTURE.md "Multi-language support". A personal, per-account
+  // preference (follows the user across devices), same precedent as
+  // groqApiKeyEnc above — NOT a Device-level field like platform/capabilities,
+  // which describe hardware, not a person's preference.
+  language        String   @default("en") @map("language")
   invitedAt       DateTime @default(now()) @map("invited_at")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
