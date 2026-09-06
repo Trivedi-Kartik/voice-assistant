@@ -38,6 +38,10 @@ export interface JarvisApi {
     onError(cb: (payload: { code: string; message: string }) => void): void;
     onToolActivity(cb: (payload: ToolActivity) => void): void;
     setActive(active: boolean): void;
+    onAutomationStart(cb: (payload: { goal: string }) => void): void;
+    onAutomationStep(cb: (payload: { action: { risk: string; reasoning: string }; ok: boolean; message: string }) => void): void;
+    onAutomationStop(cb: () => void): void;
+    cancelAutomation(): void;
   };
   hotkey: {
     onPress(cb: () => void): void;

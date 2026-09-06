@@ -522,6 +522,18 @@ button:disabled { opacity: 0.6; cursor: default; }
 .settings-app-item .link-button { margin: 0; }
 .settings-app-name { font: 600 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); text-transform: capitalize; }
 
+/* Computer-use automation panel (see AutomationPanel.tsx) — reuses
+   .settings-panel's overlay, just adds the running step list + risk/failed
+   states so a misclick or a pending risky step is visibly obvious, not
+   buried in a wall of identical-looking lines. */
+.automation-step-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.automation-step {
+  background: rgba(0, 0, 0, 0.22); border: 1px solid var(--border-soft); border-radius: 12px;
+  padding: 9px 12px; font-size: 13px; color: var(--text);
+}
+.automation-step.risky { border-color: var(--violet); }
+.automation-step.failed { border-color: #e0555a; color: var(--text-muted); }
+
 .help-examples { color: var(--violet); font-size: 13px; font-weight: 600; }
 .help-desc { color: var(--text-muted); font-size: 13px; margin-top: 3px; line-height: 1.45; }
 .hint { color: var(--text-faint); font-size: 12.5px; line-height: 1.5; margin: 8px 0; }

@@ -26,6 +26,7 @@ export interface Dictionary {
     settingsLink: string;
     micBlocked: string;
     openMicSettings: string;
+    continuousSessionHint: string;
   };
   orbLabels: {
     idle: string;
@@ -95,5 +96,10 @@ export interface Dictionary {
   };
   portal: {
     cards: PortalCard[];
+  };
+  automation: {
+    heading: string;
+    starting: string;
+    stop: string;
   };
 }

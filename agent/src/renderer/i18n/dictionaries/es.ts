@@ -7,6 +7,7 @@ export const es: Dictionary = {
     settingsLink: "Configuración",
     micBlocked: "El acceso al micrófono está bloqueado.",
     openMicSettings: "Abrir la configuración de micrófono de Windows",
+    continuousSessionHint: "Sesión activa — pulsa la tecla rápida para terminar",
   },
   orbLabels: {
     idle: "Presiona Ctrl+Shift+Espacio para hablar",
@@ -46,6 +47,7 @@ export const es: Dictionary = {
       'Esta app puede realizar acciones reales en tu computadora en tu nombre — abrir y cerrar aplicaciones, controlar la reproducción multimedia, poner recordatorios, hacer búsquedas web y abrir URLs — solo desde una lista fija y segura que tu asistente puede usar. Las acciones riesgosas (cerrar una app) o que podrían exponer algo privado (leer tu portapapeles, tomar una captura de pantalla) siempre te piden confirmación en voz alta antes de hacerlas — basta con decir "sí" en tu siguiente turno para permitirlo, o cualquier otra cosa para cancelar.',
       "Si confirmas una captura de pantalla, se envía una imagen de tu pantalla en ese momento a un modelo de IA en la nube para que te la describa — es lo más sensible que esta app comparte, por eso nunca se hace sin preguntarte antes.",
       'Puedes pedirle que agregue tus propias apps a esa lista (por ejemplo, "agrega Photoshop como una app que pueda abrir") — siempre te pide confirmar primero, y tú siempre eliges el programa exacto en un selector de archivos; nada se agrega nunca de forma automática.',
+      "Para tareas que necesitan hacer clic o escribir dentro de una app (por ejemplo, añadir algo a un carrito, enviar un mensaje), puede tomar capturas de pantalla y controlar tu ratón/teclado paso a paso — siempre te pide confirmar primero, y otra vez antes de algo que confirme una compra, envíe un mensaje o elimine algo. Usa un modelo de IA gratuito para esto, así que a veces puede hacer clic en algo equivocado; puedes decir \"para\" en cualquier momento.",
       "Esta es una beta temprana. Puede que algo falle, y el asistente a veces puede malentenderte.",
     ],
     accept: "Entendido, continuar",
@@ -181,5 +183,10 @@ export const es: Dictionary = {
         description: "Abre búsquedas web en tu navegador y recuerda los datos duraderos que le cuentes.",
       },
     ],
+  },
+  automation: {
+    heading: "Trabajando en ello",
+    starting: "Echando un vistazo a tu pantalla…",
+    stop: "Detener",
   },
 };

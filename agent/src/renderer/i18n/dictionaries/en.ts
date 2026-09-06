@@ -11,6 +11,7 @@ export const en: Dictionary = {
     settingsLink: "Settings",
     micBlocked: "Microphone access is blocked.",
     openMicSettings: "Open Windows mic settings",
+    continuousSessionHint: "Session active — press hotkey to end",
   },
   orbLabels: {
     idle: "Press Ctrl+Shift+Space to talk",
@@ -50,6 +51,7 @@ export const en: Dictionary = {
       'This app can take real actions on your computer on your behalf — opening and closing apps, controlling media, setting reminders, running web searches, and opening URLs — only from a fixed, safe list your assistant is allowed to use. Actions that are risky (closing an app) or could expose something private (reading your clipboard, taking a screenshot) always ask you out loud to confirm first — just say "yes" on your next turn to allow it, or anything else to cancel.',
       "If you confirm a screenshot, an image of your screen at that moment is sent to a cloud AI model to be described back to you — more sensitive than anything else this app shares, which is why it's never done without asking first.",
       'You can ask it to add your own apps to that list (e.g. "add Photoshop as an app I can open") — it always asks you to confirm first, and you always pick the actual program yourself in a file picker; nothing is ever added automatically.',
+      "For tasks that need clicking or typing inside an app (e.g. adding something to a cart, sending a message), it can take screenshots and control your mouse/keyboard step by step — always asks you to confirm first, and again before anything that submits a purchase, sends a message, or deletes something. It uses a free AI model for this, so it can sometimes click the wrong thing; you can say \"stop\" at any point.",
       "This is an early beta. Things may break, and the assistant may occasionally misunderstand you.",
     ],
     accept: "I understand, continue",
@@ -177,5 +179,10 @@ export const en: Dictionary = {
         description: "Opens web searches in your browser and remembers durable facts you tell it.",
       },
     ],
+  },
+  automation: {
+    heading: "Working on it",
+    starting: "Taking a look at your screen…",
+    stop: "Stop",
   },
 };

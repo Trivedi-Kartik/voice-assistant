@@ -7,6 +7,7 @@ export const pt: Dictionary = {
     settingsLink: "Configurações",
     micBlocked: "O acesso ao microfone está bloqueado.",
     openMicSettings: "Abrir configurações de microfone do Windows",
+    continuousSessionHint: "Sessão ativa — pressione a tecla de atalho para encerrar",
   },
   orbLabels: {
     idle: "Pressione Ctrl+Shift+Space para falar",
@@ -46,6 +47,7 @@ export const pt: Dictionary = {
       'Este app pode realizar ações reais no seu computador em seu nome — abrir e fechar aplicativos, controlar a reprodução de mídia, criar lembretes, fazer buscas na web e abrir URLs — apenas a partir de uma lista fixa e segura que o assistente tem permissão para usar. Ações arriscadas (fechar um app) ou que possam expor algo privado (ler sua área de transferência, tirar um print da tela) sempre pedem confirmação em voz alta primeiro — basta dizer "sim" na sua próxima vez para permitir, ou qualquer outra coisa para cancelar.',
       "Se você confirmar um print, uma imagem da sua tela naquele momento é enviada a um modelo de IA na nuvem para ser descrita de volta para você — mais sensível do que qualquer outra coisa que este app compartilha, por isso nunca é feito sem pedir confirmação antes.",
       'Você pode pedir para adicionar seus próprios aplicativos a essa lista (por exemplo, "adicionar o Photoshop como um app que eu posso abrir") — ele sempre pede sua confirmação primeiro, e você sempre escolhe o programa em um seletor de arquivos; nada é adicionado automaticamente.',
+      "Para tarefas que precisam clicar ou digitar dentro de um app (por exemplo, adicionar algo a um carrinho, enviar uma mensagem), ele pode tirar prints e controlar seu mouse/teclado passo a passo — sempre pede confirmação primeiro, e de novo antes de qualquer coisa que finalize uma compra, envie uma mensagem ou exclua algo. Ele usa um modelo de IA gratuito para isso, então às vezes pode clicar na coisa errada; você pode dizer \"pare\" a qualquer momento.",
       "Esta é uma versão beta inicial. Algumas coisas podem não funcionar direito, e o assistente pode, às vezes, entender errado o que você disse.",
     ],
     accept: "Entendi, continuar",
@@ -173,5 +175,10 @@ export const pt: Dictionary = {
         description: "Abre buscas na web no seu navegador e guarda fatos duradouros que você conta a ele.",
       },
     ],
+  },
+  automation: {
+    heading: "Trabalhando nisso",
+    starting: "Dando uma olhada na sua tela…",
+    stop: "Parar",
   },
 };

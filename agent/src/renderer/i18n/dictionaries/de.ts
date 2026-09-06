@@ -7,6 +7,7 @@ export const de: Dictionary = {
     settingsLink: "Einstellungen",
     micBlocked: "Der Mikrofonzugriff ist blockiert.",
     openMicSettings: "Windows-Mikrofoneinstellungen öffnen",
+    continuousSessionHint: "Sitzung aktiv — Hotkey drücken zum Beenden",
   },
   orbLabels: {
     idle: "Drück Strg+Umschalt+Leertaste zum Sprechen",
@@ -46,6 +47,7 @@ export const de: Dictionary = {
       'Diese App kann in deinem Namen echte Aktionen auf deinem Computer ausführen — Apps öffnen und schließen, Medien steuern, Erinnerungen setzen, Websuchen durchführen und URLs öffnen — aber nur aus einer festen, sicheren Liste, die dein Assistent verwenden darf. Bei riskanten Aktionen (eine App schließen) oder Aktionen, die etwas Privates offenlegen könnten (deine Zwischenablage lesen, einen Screenshot machen), fragt er dich immer laut zuerst um Bestätigung — sag beim nächsten Mal einfach "ja", um es zu erlauben, oder irgendetwas anderes, um abzubrechen.',
       "Wenn du einen Screenshot bestätigst, wird ein Bild deines Bildschirms in diesem Moment an ein Cloud-KI-Modell gesendet, das es dir beschreibt — das ist sensibler als alles andere, was diese App teilt, weshalb das nie ohne vorherige Nachfrage passiert.",
       'Du kannst ihn bitten, eigene Apps zu dieser Liste hinzuzufügen (z. B. "füge Photoshop als App hinzu, die ich öffnen kann") — er fragt dich dabei immer zuerst um Bestätigung, und du wählst das Programm immer selbst in einer Dateiauswahl aus; nichts wird jemals automatisch hinzugefügt.',
+      "Für Aufgaben, bei denen in einer App geklickt oder getippt werden muss (z. B. etwas in einen Warenkorb legen, eine Nachricht senden), kann er Screenshots machen und deine Maus/Tastatur Schritt für Schritt steuern — fragt dabei immer zuerst um Bestätigung, und noch einmal, bevor ein Kauf abgeschlossen, eine Nachricht gesendet oder etwas gelöscht wird. Dafür wird ein kostenloses KI-Modell verwendet, daher kann er manchmal das Falsche anklicken; du kannst jederzeit \"stopp\" sagen.",
       "Das ist eine frühe Betaversion. Manches kann noch nicht rundlaufen, und der Assistent versteht dich vielleicht ab und zu falsch.",
     ],
     accept: "Verstanden, weiter",
@@ -173,5 +175,10 @@ export const de: Dictionary = {
         description: "Öffnet Websuchen in deinem Browser und merkt sich dauerhafte Fakten, die du ihm erzählst.",
       },
     ],
+  },
+  automation: {
+    heading: "Wird erledigt",
+    starting: "Schaut sich deinen Bildschirm an…",
+    stop: "Stopp",
   },
 };
