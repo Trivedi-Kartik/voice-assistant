@@ -63,6 +63,12 @@ export function App() {
   // value in a handler, to avoid stale-closure/re-render races.
   const sessionActive = useRef(false);
   const sessionInactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Same stale-closure hazard as sessionActive above, and it actually bit
+  // here: toggleMic is handed to hotkey.onPress inside a mount-only effect,
+  // so a plain `automationActive` read there is frozen at its initial
+  // (false) value forever — the hotkey could never actually cancel a running
+  // automation. Mirrored into a ref on every change instead.
+  const automationActiveRef = useRef(false);
 
   function armSessionInactivityTimer() {
     if (sessionInactivityTimer.current !== null) clearTimeout(sessionInactivityTimer.current);
@@ -120,7 +126,7 @@ export function App() {
     // recording) — pressing the hotkey/mic button while one is running
     // always means "stop the automation," same "one control, one meaning"
     // precedent as endSession() below.
-    if (automationActive) {
+    if (automationActiveRef.current) {
       window.jarvis.conversation.cancelAutomation();
       return;
     }
@@ -198,6 +204,7 @@ export function App() {
     });
 
     window.jarvis.conversation.onAutomationStart((payload) => {
+      automationActiveRef.current = true;
       setAutomationActive(true);
       setAutomationGoal(payload.goal);
       setAutomationSteps([]);
@@ -206,6 +213,7 @@ export function App() {
       setAutomationSteps((steps) => [...steps, { description: payload.message, risk: payload.action.risk, ok: payload.ok }]);
     });
     window.jarvis.conversation.onAutomationStop(() => {
+      automationActiveRef.current = false;
       setAutomationActive(false);
     });
 

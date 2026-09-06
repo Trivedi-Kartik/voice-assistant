@@ -308,6 +308,13 @@ export class Session {
         // recording (or Groq being rate-limited on the STT call specifically)
         // is a different failure than the LLM mishandling a valid transcript,
         // and deserves a different, more specific message.
+        // Temporary diagnostic (remove once the "could not process file" cause
+        // is confirmed): a valid WebM/EBML file always starts with byte
+        // sequence 1a 45 df a3 — if this header is missing/short, the client
+        // sent a corrupted or empty recording, not a server/API problem.
+        console.error(
+          `[session] transcription failed — audio buffer: ${audio.length} bytes, first 8 bytes: ${audio.subarray(0, 8).toString("hex")}`
+        );
         console.error("[session] transcription failed", err);
         this.send({
           type: "error",

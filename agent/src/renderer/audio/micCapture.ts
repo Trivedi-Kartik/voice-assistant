@@ -15,6 +15,14 @@ export class MicCapture {
   // intermittent Groq "could not process file" errors, worse on short recordings.
   private sendChain: Promise<void> = Promise.resolve();
 
+  // Preferred first — same container/codec the server always expected
+  // ("utterance.webm" is hardcoded server-side in stt.ts). The plain
+  // "audio/webm" fallback still gets accepted by Whisper (it sniffs actual
+  // content, not the filename extension), so a build that can't do
+  // opus-in-webm specifically still records something valid rather than
+  // silently using a browser-default encoding the server never expects.
+  private static readonly MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm"];
+
   async start(onPermissionDenied: () => void): Promise<void> {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -26,8 +34,17 @@ export class MicCapture {
       throw err;
     }
 
+    // Real gap this was missing entirely: the old code hardcoded one exact
+    // mimeType string with no feature check and no try/catch around
+    // `new MediaRecorder(...)` — on a browser build where that string isn't
+    // actually supported, this constructor throws, and nothing here caught
+    // it, so a "listening" state could be shown with no recorder ever
+    // created.
+    const mimeType = MicCapture.MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t));
+    if (!mimeType) throw new Error("No supported audio recording format found on this device.");
+
     this.sendChain = Promise.resolve();
-    const recorder = new MediaRecorder(this.stream, { mimeType: "audio/webm;codecs=opus" });
+    const recorder = new MediaRecorder(this.stream, { mimeType });
     this.mediaRecorder = recorder;
 
     recorder.ondataavailable = (event) => {
