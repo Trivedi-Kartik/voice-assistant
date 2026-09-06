@@ -19,7 +19,7 @@ export const takeScreenshotTool: ToolDefinition<Record<string, never>> = {
     // broke when this failed on real Windows testing.
     let imageDataUri: string;
     try {
-      imageDataUri = await captureScreenshotDataUri();
+      imageDataUri = (await captureScreenshotDataUri()).dataUri;
     } catch (err) {
       console.error("[tools] screenshot capture failed", err);
       return { ok: false, message: "Couldn't take a screenshot right now." };

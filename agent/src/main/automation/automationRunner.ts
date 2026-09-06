@@ -1,5 +1,5 @@
 import type { BrowserWindow } from "electron";
-import type { ClientMessage, ServerMessage } from "../../shared/protocol.js";
+import type { ClientMessage, ServerMessage, AutomationAction } from "../../shared/protocol.js";
 import { captureScreenshotDataUri } from "../tools/computerUse/screenshotStep.js";
 import { performAction } from "../tools/computerUse/inputSim.js";
 
@@ -8,6 +8,13 @@ import { performAction } from "../tools/computerUse/inputSim.js";
 // store) since screenshot capture/input simulation only exist in the main
 // process, same boundary as every other tool.
 let activeTaskId: string | null = null;
+// The scale factor of the MOST RECENTLY SENT screenshot (see
+// screenshotStep.ts) — the vision model's next decided action is always
+// relative to that exact screenshot, so this must be applied to its x/y
+// before executing, or every click lands wrong (found via live testing:
+// clicks were landing near the top-left of the real screen, e.g. on taskbar
+// icons, instead of inside the target window).
+let currentScale = 1;
 
 export function isAutomationActive(): boolean {
   return activeTaskId !== null;
@@ -19,9 +26,20 @@ export function requestCancelActiveAutomation(send: (msg: ClientMessage) => void
   if (activeTaskId) send({ type: "automation_cancel", taskId: activeTaskId });
 }
 
+function scaleAction(action: AutomationAction, scale: number): AutomationAction {
+  if (scale === 1) return action;
+  return {
+    ...action,
+    x: action.x !== undefined ? action.x * scale : undefined,
+    y: action.y !== undefined ? action.y * scale : undefined,
+  };
+}
+
 async function captureOrBail(taskId: string, send: (msg: ClientMessage) => void, win: BrowserWindow): Promise<string | null> {
   try {
-    return await captureScreenshotDataUri();
+    const { dataUri, scale } = await captureScreenshotDataUri();
+    currentScale = scale;
+    return dataUri;
   } catch (err) {
     console.error("[automation] screenshot capture failed", err);
     send({ type: "automation_cancel", taskId });
@@ -40,6 +58,7 @@ export async function handleAutomationServerMessage(
 ): Promise<boolean> {
   if (msg.type === "automation_start") {
     activeTaskId = msg.taskId;
+    currentScale = 1;
     win.webContents.send("conversation:automationStart", { goal: msg.goal });
     const screenshot = await captureOrBail(msg.taskId, send, win);
     if (screenshot === null) return true;
@@ -49,7 +68,7 @@ export async function handleAutomationServerMessage(
 
   if (msg.type === "automation_action") {
     if (msg.taskId !== activeTaskId) return true; // stale/unknown task — ignore
-    const result = await performAction(msg.action);
+    const result = await performAction(scaleAction(msg.action, currentScale));
     win.webContents.send("conversation:automationStep", { action: msg.action, ok: result.ok, message: result.message });
     send({ type: "automation_action_result", taskId: msg.taskId, stepIndex: msg.stepIndex, result });
     const screenshot = await captureOrBail(msg.taskId, send, win);
