@@ -9,8 +9,10 @@ import {
   toolSchemasForCapabilities,
   SERVER_TOOL_SCHEMAS,
   SERVER_TOOL_NAMES,
+  AUTOMATION_TOOL_SCHEMAS,
   CONFIRMATION_PROMPTS,
 } from "../tools/schemas.js";
+import { AutomationRunner, type AutomationOutcome } from "../automation/runner.js";
 import { TOOL_NAMES } from "../tools/toolNames.js";
 import { LANGUAGE_NAMES, type LanguageCode } from "../i18n/languages.js";
 import { getMessages } from "../i18n/messages.js";
@@ -161,6 +163,13 @@ export class Session {
   // a stale "yes" after a reconnect is treated as a fresh, contextless
   // utterance rather than an accidental confirmation — never a safety issue.
   private pendingConfirmation?: { name: string; args: unknown };
+  // Computer-use automation (see server/src/automation/runner.ts) — a task can
+  // span many turns whenever a high-risk step needs its own fresh spoken
+  // confirmation. All three are in-memory, same lost-on-disconnect precedent
+  // as pendingConfirmation/pendingCalls above.
+  private activeAutomation?: AutomationRunner;
+  private pendingAutomationConfirm = false;
+  private pendingAutomationConfirmText?: string;
 
   private constructor(
     private readonly ws: WebSocket,
@@ -215,6 +224,15 @@ export class Session {
         return;
       case "auth":
         return; // handled at connection setup, not mid-session
+      case "automation_observation":
+        this.activeAutomation?.handleObservation(msg.taskId, msg.screenshot);
+        return;
+      case "automation_action_result":
+        this.activeAutomation?.handleActionResult(msg.taskId, msg.result.ok, msg.result.message);
+        return;
+      case "automation_cancel":
+        this.activeAutomation?.handleCancel(msg.taskId);
+        return;
     }
   }
 
@@ -339,10 +357,47 @@ export class Session {
             content: "",
             tool_calls: [{ id: callId, type: "function", function: { name: pending.name, arguments: JSON.stringify(pending.args) } }],
           });
-          const result = SERVER_TOOL_NAMES.has(pending.name)
-            ? await this.handleServerTool(pending.name, pending.args, userMessageId)
-            : await this.dispatchToolCall(callId, pending.name, pending.args);
+          const result =
+            pending.name === "computer_use_task"
+              ? await this.startAutomation(pending.args)
+              : SERVER_TOOL_NAMES.has(pending.name)
+                ? await this.handleServerTool(pending.name, pending.args, userMessageId)
+                : await this.dispatchToolCall(callId, pending.name, pending.args);
           this.history.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(result) });
+          if (this.pendingAutomationConfirm) {
+            await this.speakAndEndTurn(this.pendingAutomationConfirmText!);
+            await this.finishTurnEarly();
+            return;
+          }
+        }
+      }
+
+      // Distinct from pendingConfirmation above: an in-progress computer-use
+      // task paused on a specific high-risk STEP (not the initial "start
+      // automation?" gate, which is a normal pendingConfirmation case handled
+      // above). Same "always mint a fresh, self-contained tool_calls/tool
+      // pair" discipline — never leaves a call open across this pause.
+      if (this.pendingAutomationConfirm && this.activeAutomation) {
+        const proceed = classifyConfirmation(transcript, this.language) === "yes";
+        this.pendingAutomationConfirm = false;
+        const callId = uuid();
+        this.history.push({
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: callId,
+              type: "function",
+              function: { name: "computer_use_task", arguments: JSON.stringify({ goal: this.activeAutomation.goal }) },
+            },
+          ],
+        });
+        const result = await this.resumeAutomation(proceed);
+        this.history.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(result) });
+        if (this.pendingAutomationConfirm) {
+          await this.speakAndEndTurn(this.pendingAutomationConfirmText!);
+          await this.finishTurnEarly();
+          return;
         }
       }
 
@@ -352,7 +407,7 @@ export class Session {
       });
       this.history[0] = { role: "system", content: buildSystemPrompt(relevantMemories, this.language) };
 
-      const tools = [...toolSchemasForCapabilities(this.capabilities), ...SERVER_TOOL_SCHEMAS];
+      const tools = [...toolSchemasForCapabilities(this.capabilities), ...SERVER_TOOL_SCHEMAS, ...AUTOMATION_TOOL_SCHEMAS];
 
       for (let step = 0; step < MAX_TOOL_LOOP_STEPS; step++) {
         let assistantMessage, toolCalls;
@@ -406,17 +461,12 @@ export class Session {
           // docs/ARCHITECTURE.md.
           const pending = this.pendingConfirmation!;
           const confirmText = getConfirmationPrompt(this.language, pending.name)!(pending.args);
-          this.history.push({ role: "assistant", content: confirmText });
-          this.send({ type: "assistant_text", text: confirmText });
-          await appendMessage(this.conversationId, "assistant", confirmText).catch((err) =>
-            console.error("[session] appendMessage(assistant) failed", err)
-          );
+          await this.speakAndEndTurn(confirmText);
           break;
         }
       }
 
-      await this.persist();
-      recordUsage(this.userId, {}).catch(() => {});
+      await this.finishTurnEarly();
     } catch (err) {
       // Both checks catch the exhausted-retries case too (see llm.ts) — these
       // are known, expected occasional failures (a malformed-tool-call
@@ -432,6 +482,60 @@ export class Session {
     } finally {
       releaseUserLock(this.userId);
     }
+  }
+
+  // Shared by both the "start automation?" and any later "about to <risky
+  // step> — go ahead?" prompts: speak a deterministic line directly (no extra
+  // LLM call, same reasoning as the existing awaitingConfirmation prompt) and
+  // let the turn end there rather than letting the main LLM chat over it.
+  private async speakAndEndTurn(text: string): Promise<void> {
+    this.history.push({ role: "assistant", content: text });
+    this.send({ type: "assistant_text", text });
+    await appendMessage(this.conversationId, "assistant", text).catch((err) =>
+      console.error("[session] appendMessage(assistant) failed", err)
+    );
+  }
+
+  private async finishTurnEarly(): Promise<void> {
+    await this.persist();
+    recordUsage(this.userId, {}).catch(() => {});
+  }
+
+  // Kicks off a computer-use task right after the user confirmed the initial
+  // "this lets me click/type on your screen" gate. Runs until the task
+  // finishes, needs a fresh spoken confirmation for a high-risk step, or hits
+  // its step/time budget — see automation/runner.ts.
+  private async startAutomation(args: unknown): Promise<ToolResult> {
+    const messages = getMessages(this.language);
+    const parsed = z.object({ goal: z.string().min(3) }).safeParse(args);
+    if (!parsed.success) return { ok: false, message: "Couldn't understand what to automate." };
+    const { apiKey } = await resolveGroqKey(this.userId);
+    const runner = new AutomationRunner(this.userId, this.deviceId, parsed.data.goal, apiKey, (msg) => this.send(msg));
+    this.activeAutomation = runner;
+    return this.driveAutomation(runner.run("start"), messages);
+  }
+
+  // Resumes an in-progress task after the user answered a risky-step
+  // confirmation. `proceed=false` ends the whole task, not just that step —
+  // a simple, unambiguous default (see automation/runner.ts).
+  private async resumeAutomation(proceed: boolean): Promise<ToolResult> {
+    const messages = getMessages(this.language);
+    const runner = this.activeAutomation!;
+    return this.driveAutomation(runner.run(proceed ? "resume-confirmed" : "resume-cancelled"), messages);
+  }
+
+  private async driveAutomation(
+    outcomePromise: Promise<AutomationOutcome>,
+    messages: ReturnType<typeof getMessages>
+  ): Promise<ToolResult> {
+    const outcome = await outcomePromise;
+    if (outcome.kind === "needs_confirmation") {
+      this.pendingAutomationConfirm = true;
+      this.pendingAutomationConfirmText = messages.automationConfirmAction(outcome.description);
+      return { ok: false, message: messages.waitingForConfirmation };
+    }
+    this.activeAutomation = undefined;
+    return { ok: true, message: outcome.summary };
   }
 
   // Server-handled tools (Phase 2) never round-trip to the client — they don't

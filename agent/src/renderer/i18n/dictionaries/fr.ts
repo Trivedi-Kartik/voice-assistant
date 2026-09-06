@@ -7,6 +7,7 @@ export const fr: Dictionary = {
     settingsLink: "Paramètres",
     micBlocked: "L'accès au micro est bloqué.",
     openMicSettings: "Ouvrir les paramètres micro de Windows",
+    continuousSessionHint: "Session active — appuie sur le raccourci pour terminer",
   },
   orbLabels: {
     idle: "Appuie sur Ctrl+Shift+Espace pour parler",
@@ -46,6 +47,7 @@ export const fr: Dictionary = {
       'Cette appli peut effectuer de vraies actions sur ton ordinateur en ton nom — ouvrir et fermer des applis, contrôler les médias, programmer des rappels, lancer des recherches sur le web et ouvrir des URL — uniquement à partir d\'une liste fixe et sûre que ton assistant est autorisé à utiliser. Les actions risquées (fermer une appli) ou qui pourraient exposer quelque chose de privé (lire ton presse-papiers, prendre une capture d\'écran) te demandent toujours de confirmer à voix haute — dis simplement "oui" au tour suivant pour l\'autoriser, ou autre chose pour annuler.',
       "Si tu confirmes une capture d'écran, une image de ton écran à ce moment-là est envoyée à un modèle d'IA dans le cloud pour t'en faire une description — c'est plus sensible que tout ce que cette appli partage, c'est pourquoi ça ne se fait jamais sans te le demander d'abord.",
       'Tu peux lui demander d\'ajouter tes propres applis à cette liste (par ex. "ajoute Photoshop aux applis que je peux ouvrir") — il te demande toujours de confirmer d\'abord, et tu choisis toujours toi-même le programme dans un sélecteur de fichiers ; rien n\'est jamais ajouté automatiquement.',
+      "Pour les tâches qui nécessitent de cliquer ou de taper dans une appli (par ex. ajouter quelque chose à un panier, envoyer un message), il peut prendre des captures d'écran et contrôler ta souris/ton clavier étape par étape — il te demande toujours de confirmer d'abord, et encore avant tout ce qui valide un achat, envoie un message ou supprime quelque chose. Il utilise un modèle d'IA gratuit pour ça, donc il peut parfois cliquer au mauvais endroit ; tu peux dire \"stop\" à tout moment.",
       "C'est une bêta précoce. Des choses peuvent ne pas fonctionner, et l'assistant peut parfois mal te comprendre.",
     ],
     accept: "J'ai compris, continuer",
@@ -173,5 +175,10 @@ export const fr: Dictionary = {
         description: "Ouvre des recherches web dans ton navigateur et retient les faits durables que tu lui dis.",
       },
     ],
+  },
+  automation: {
+    heading: "En cours",
+    starting: "Je regarde ton écran…",
+    stop: "Arrêter",
   },
 };

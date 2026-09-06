@@ -52,6 +52,16 @@ contextBridge.exposeInMainWorld("jarvis", {
       ipcRenderer.on("conversation:toolActivity", (_e, payload) => cb(payload));
     },
     setActive: (active: boolean) => ipcRenderer.send("conversation:setActive", active),
+    onAutomationStart: (cb: (payload: { goal: string }) => void) => {
+      ipcRenderer.on("conversation:automationStart", (_e, payload) => cb(payload));
+    },
+    onAutomationStep: (cb: (payload: { action: { risk: string; reasoning: string }; ok: boolean; message: string }) => void) => {
+      ipcRenderer.on("conversation:automationStep", (_e, payload) => cb(payload));
+    },
+    onAutomationStop: (cb: () => void) => {
+      ipcRenderer.on("conversation:automationStop", () => cb());
+    },
+    cancelAutomation: () => ipcRenderer.send("conversation:cancelAutomation"),
   },
   hotkey: {
     onPress: (cb: () => void) => {

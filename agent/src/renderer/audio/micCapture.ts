@@ -40,6 +40,12 @@ export class MicCapture {
     recorder.start(250);
   }
 
+  // For SilenceDetector (see audio/silenceDetector.ts) to build its own
+  // AnalyserNode on the SAME stream — never a second getUserMedia call.
+  getStream(): MediaStream | null {
+    return this.stream;
+  }
+
   stop(): void {
     if (!this.mediaRecorder || this.mediaRecorder.state === "inactive") return;
     this.mediaRecorder.onstop = () => {

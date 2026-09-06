@@ -13,6 +13,7 @@ import { authManager } from "./auth/authManager.js";
 import { Connection, type ConnectionStatus } from "./ws/connection.js";
 import { HotkeyTriggerSource } from "./hotkey/hotkeyTriggerSource.js";
 import { dispatchToolCall } from "./tools/index.js";
+import { handleAutomationServerMessage } from "./automation/automationRunner.js";
 import { startReminderScheduler } from "./reminders/reminderScheduler.js";
 import { registerIpcHandlers } from "./ipc/ipcHandlers.js";
 import { createMainWindow } from "./window.js";
@@ -49,6 +50,11 @@ function handleServerMessage(msg: ServerMessage): void {
     case "error":
       conversationActive = false;
       win.webContents.send("conversation:error", { code: msg.code, message: msg.message });
+      return;
+    case "automation_start":
+    case "automation_action":
+    case "automation_stop":
+      void handleAutomationServerMessage(msg, (m) => connection.send(m), win);
       return;
   }
 }

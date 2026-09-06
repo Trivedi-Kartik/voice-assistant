@@ -199,17 +199,50 @@ export const SERVER_TOOL_SCHEMAS: ToolSchema[] = [
 
 export const SERVER_TOOL_NAMES = new Set(SERVER_TOOL_SCHEMAS.map((s) => s.function.name));
 
+// Computer-use automation — a screenshot -> decide-action -> execute loop that
+// can click/type/scroll anywhere on screen (see server/src/automation/). Kept
+// out of GROQ_TOOL_SCHEMAS/TOOL_NAMES deliberately: unlike every other client
+// tool, this one never resolves via a single dispatchToolCall/tool_result
+// round-trip through the client's plain tool REGISTRY — its execution is a
+// bounded multi-step WS conversation of its own (see ws/session.ts,
+// automation/runner.ts), so it has no place in the registry-schema symmetry
+// check that assertSchemasMatchContract() enforces for the other 9.
+export const AUTOMATION_TOOL_SCHEMAS: ToolSchema[] = [
+  {
+    type: "function" as const,
+    function: {
+      name: "computer_use_task",
+      description:
+        "Use ONLY when a request needs clicking/typing inside an app or website beyond what the other tools " +
+        "cover (e.g. 'add this to my cart on Amazon', 'send a WhatsApp message to X saying Y'). Takes " +
+        "screenshots and controls the mouse/keyboard step by step toward the goal. Always asks the user to " +
+        "confirm first, and again before any step that submits a purchase, sends a message, or deletes " +
+        "something. Can misclick sometimes — describe the goal precisely.",
+      parameters: {
+        type: "object",
+        properties: {
+          goal: { type: "string", description: "A precise, complete description of what to accomplish on screen." },
+        },
+        required: ["goal"],
+      },
+    },
+  },
+];
+
 // The server-side replacement for what each tool's client-side describe()
-// used to do for the deleted dialog.showMessageBox gate — these four tools
-// now get a spoken confirmation question (see ws/session.ts) instead of a
-// popup. Presence in this map, not a "sensitivity" field, is what makes a
-// tool call pause for confirmation.
+// used to do for the deleted dialog.showMessageBox gate — these tools now get
+// a spoken confirmation question (see ws/session.ts) instead of a popup.
+// Presence in this map, not a "sensitivity" field, is what makes a tool call
+// pause for confirmation.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const CONFIRMATION_PROMPTS: Partial<Record<string, (args: any) => string>> = {
   close_app: (args) => `Close ${args?.app ?? "that"}? Say yes to confirm.`,
   read_clipboard: () => "Share your clipboard with me? Say yes to confirm.",
   take_screenshot_and_describe: () => "Take a screenshot and share it with me? Say yes to confirm.",
   add_custom_app: (args) => `Add ${args?.name ?? "that"} as an app you can open? Say yes to confirm.`,
+  computer_use_task: () =>
+    "This lets me click and type on your screen to do that — it can sometimes click the wrong thing, and " +
+    "you can say stop at any point. Go ahead?",
 };
 
 function assertSchemasMatchContract() {

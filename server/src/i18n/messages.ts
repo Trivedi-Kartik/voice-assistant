@@ -24,6 +24,7 @@ export interface Messages {
   deviceDisconnected: string;
   waitingForConfirmation: string;
   toolTimedOut: string;
+  automationConfirmAction: (description: string) => string;
 }
 
 const en: Messages = {
@@ -44,6 +45,7 @@ const en: Messages = {
   deviceDisconnected: "Device disconnected before finishing this action.",
   waitingForConfirmation: "Waiting for the user's confirmation.",
   toolTimedOut: "Tool timed out",
+  automationConfirmAction: (description) => `${description} — go ahead? Say yes to confirm.`,
 };
 
 const hi: Messages = {
@@ -64,6 +66,7 @@ const hi: Messages = {
   deviceDisconnected: "यह काम पूरा होने से पहले डिवाइस डिस्कनेक्ट हो गया।",
   waitingForConfirmation: "उपयोगकर्ता की पुष्टि का इंतज़ार है।",
   toolTimedOut: "टूल का समय समाप्त हो गया",
+  automationConfirmAction: (description) => `${description} — आगे बढ़ूँ? पुष्टि के लिए हाँ कहें।`,
 };
 
 const es: Messages = {
@@ -84,6 +87,7 @@ const es: Messages = {
   deviceDisconnected: "El dispositivo se desconectó antes de terminar esta acción.",
   waitingForConfirmation: "Esperando la confirmación del usuario.",
   toolTimedOut: "La herramienta agotó el tiempo de espera",
+  automationConfirmAction: (description) => `${description} — ¿adelante? Di sí para confirmar.`,
 };
 
 const fr: Messages = {
@@ -104,6 +108,7 @@ const fr: Messages = {
   deviceDisconnected: "L'appareil s'est déconnecté avant la fin de cette action.",
   waitingForConfirmation: "En attente de la confirmation de l'utilisateur.",
   toolTimedOut: "L'outil a expiré",
+  automationConfirmAction: (description) => `${description} — on y va ? Dites oui pour confirmer.`,
 };
 
 const de: Messages = {
@@ -124,6 +129,7 @@ const de: Messages = {
   deviceDisconnected: "Das Gerät hat die Verbindung getrennt, bevor diese Aktion abgeschlossen war.",
   waitingForConfirmation: "Warte auf die Bestätigung des Nutzers.",
   toolTimedOut: "Zeitüberschreitung beim Tool",
+  automationConfirmAction: (description) => `${description} — los geht's? Sag ja, um zu bestätigen.`,
 };
 
 const it: Messages = {
@@ -144,6 +150,7 @@ const it: Messages = {
   deviceDisconnected: "Il dispositivo si è disconnesso prima che questa azione fosse completata.",
   waitingForConfirmation: "In attesa della conferma dell'utente.",
   toolTimedOut: "Lo strumento ha superato il tempo limite",
+  automationConfirmAction: (description) => `${description} — procedo? Di' sì per confermare.`,
 };
 
 const pt: Messages = {
@@ -164,6 +171,7 @@ const pt: Messages = {
   deviceDisconnected: "O dispositivo desconectou antes de concluir esta ação.",
   waitingForConfirmation: "Aguardando a confirmação do usuário.",
   toolTimedOut: "A ferramenta expirou",
+  automationConfirmAction: (description) => `${description} — posso continuar? Diga sim para confirmar.`,
 };
 
 const th: Messages = {
@@ -184,6 +192,7 @@ const th: Messages = {
   deviceDisconnected: "อุปกรณ์หลุดการเชื่อมต่อก่อนที่การทำงานนี้จะเสร็จสิ้น",
   waitingForConfirmation: "กำลังรอการยืนยันจากผู้ใช้",
   toolTimedOut: "เครื่องมือหมดเวลา",
+  automationConfirmAction: (description) => `${description} — ให้ทำเลยไหม? พูดว่าใช่เพื่อยืนยัน`,
 };
 
 const MESSAGES: Record<LanguageCode, Messages> = { en, hi, es, fr, de, it, pt, th };

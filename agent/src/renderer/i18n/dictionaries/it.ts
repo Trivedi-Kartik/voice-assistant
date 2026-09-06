@@ -7,6 +7,7 @@ export const it: Dictionary = {
     settingsLink: "Impostazioni",
     micBlocked: "L'accesso al microfono è bloccato.",
     openMicSettings: "Apri le impostazioni del microfono di Windows",
+    continuousSessionHint: "Sessione attiva — premi il tasto di scelta rapida per terminare",
   },
   orbLabels: {
     idle: "Premi Ctrl+Shift+Spazio per parlare",
@@ -46,6 +47,7 @@ export const it: Dictionary = {
       'Questa app può compiere azioni reali sul tuo computer per tuo conto — aprire e chiudere app, controllare i contenuti multimediali, impostare promemoria, fare ricerche sul web e aprire URL — solo da un elenco fisso e sicuro che il tuo assistente può usare. Le azioni rischiose (chiudere un\'app) o che potrebbero esporre qualcosa di privato (leggere gli appunti, fare uno screenshot) ti chiedono sempre a voce di confermare prima — basta dire "sì" al turno successivo per permetterlo, o qualsiasi altra cosa per annullare.',
       "Se confermi uno screenshot, un'immagine del tuo schermo in quel momento viene inviata a un modello IA nel cloud per essere descritta a voce — è la cosa più sensibile che questa app condivide, motivo per cui non viene mai fatto senza chiedere prima il tuo permesso.",
       'Puoi chiederle di aggiungere le tue app a quell\'elenco (ad esempio "aggiungi Photoshop tra le app che posso aprire") — ti chiede sempre di confermare prima, e sei sempre tu a scegliere il programma effettivo in un selettore di file; non viene mai aggiunto nulla automaticamente.',
+      "Per attività che richiedono di cliccare o scrivere dentro un'app (ad esempio aggiungere qualcosa a un carrello, inviare un messaggio), può fare screenshot e controllare mouse/tastiera passo dopo passo — chiede sempre prima conferma, e di nuovo prima di qualsiasi cosa che concluda un acquisto, invii un messaggio o elimini qualcosa. Usa un modello IA gratuito per questo, quindi a volte può cliccare sulla cosa sbagliata; puoi dire \"stop\" in qualsiasi momento.",
       "Questa è una beta iniziale. Alcune cose potrebbero non funzionare a dovere, e l'assistente potrebbe ogni tanto fraintenderti.",
     ],
     accept: "Ho capito, continua",
@@ -173,5 +175,10 @@ export const it: Dictionary = {
         description: "Apre ricerche web nel tuo browser e ricorda i fatti duraturi che gli dici.",
       },
     ],
+  },
+  automation: {
+    heading: "Ci sto lavorando",
+    starting: "Sto dando un'occhiata al tuo schermo…",
+    stop: "Ferma",
   },
 };

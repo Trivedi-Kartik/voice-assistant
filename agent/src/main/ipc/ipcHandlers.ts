@@ -4,6 +4,7 @@ import type { Connection } from "../ws/connection.js";
 import { hasConsented, recordConsent } from "../consent.js";
 import { listCustomApps, removeCustomApp } from "../customApps/customAppStore.js";
 import { speakNative, stopNative } from "../tts/nativeTts.js";
+import { requestCancelActiveAutomation } from "../automation/automationRunner.js";
 
 export interface IpcContext {
   win: BrowserWindow;
@@ -68,6 +69,10 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   // so it doesn't auto-install an update mid-conversation. See updater/autoUpdate.ts.
   ipcMain.on("conversation:setActive", (_e, active: boolean) => {
     ctx.onConversationActiveChanged(active);
+  });
+
+  ipcMain.on("conversation:cancelAutomation", () => {
+    requestCancelActiveAutomation((m) => ctx.connection.send(m));
   });
 
   ipcMain.on("shell:openMicSettings", () => {

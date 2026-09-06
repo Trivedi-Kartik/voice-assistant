@@ -38,6 +38,7 @@ model User {
   toolInvocations ToolInvocation[]
   conversations   Conversation[]
   memoryFacts     MemoryFact[]
+  automationSteps AutomationStep[]
 
   @@map("users")
 }
@@ -171,4 +172,30 @@ model MemoryFact {
 
   @@index([userId])
   @@map("memory_facts")
+}
+
+// Audit trail for computer-use automation (see server/src/automation/) — one
+// row per EXECUTED step (a proposed-but-not-yet-confirmed high-risk step is
+// never written here, only what actually ran). Modeled after ToolInvocation,
+// with an added ordering concept since a task is a sequence, not a single
+// call. Deliberately excludes screenshot bytes, same reasoning as
+// ToolInvocation excluding transcript content and vision/routes.ts not
+// persisting screen-content data anywhere.
+model AutomationStep {
+  id            String   @id @default(uuid())
+  taskId        String   @map("task_id")
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId      String   @map("device_id")
+  stepIndex     Int      @map("step_index")
+  action        Json // the decided AutomationAction (type/x/y/text/key/risk/reasoning) — never a screenshot
+  risk          String // 'low' | 'high'
+  confirmed     Boolean  @default(false)
+  resultOk      Boolean? @map("result_ok")
+  resultMessage String?  @map("result_message") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([taskId])
+  @@index([userId, createdAt])
+  @@map("automation_steps")
 }

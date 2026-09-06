@@ -1,27 +1,7 @@
-import { desktopCapturer, screen } from "electron";
 import { z } from "zod";
 import type { ToolDefinition } from "./types.js";
 import { authManager } from "../auth/authManager.js";
-
-// Primary display only, not all monitors — capturing/describing every
-// monitor multiplies cost and "describe my screen" is ambiguous with
-// several anyway. See docs/ARCHITECTURE.md.
-const MAX_WIDTH = 1280;
-const JPEG_QUALITY = 70;
-
-async function captureScreenshotDataUri(): Promise<string> {
-  const display = screen.getPrimaryDisplay();
-  const sources = await desktopCapturer.getSources({
-    types: ["screen"],
-    thumbnailSize: display.size,
-  });
-  const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0];
-  if (!source) throw new Error("no_screen_source");
-
-  const { width } = source.thumbnail.getSize();
-  const resized = width > MAX_WIDTH ? source.thumbnail.resize({ width: MAX_WIDTH }) : source.thumbnail;
-  return `data:image/jpeg;base64,${resized.toJPEG(JPEG_QUALITY).toString("base64")}`;
-}
+import { captureScreenshotDataUri } from "./computerUse/screenshotStep.js";
 
 const argsSchema = z.object({});
 
