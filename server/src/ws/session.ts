@@ -43,10 +43,14 @@ const SYSTEM_PROMPT =
   "about a third party. Replies are spoken " +
   "aloud via text-to-speech, so: keep replies short and conversational, like natural " +
   "speech. Use the available tools to actually perform actions rather than just " +
-  "describing what you'd do or asking the user to do it themselves. Never mention tool " +
-  "or function names, and never include code, JSON, or programming syntax of any kind " +
-  "in your reply — describe outcomes in plain language only (e.g. \"I found some results " +
-  "for that\" or \"Chrome should be open now\"), never HOW you did it.";
+  "describing what you'd do or asking the user to do it themselves. If a tool needs " +
+  "confirmation, the system asks that automatically the moment you call it — never ask " +
+  "\"should I go ahead?\" or similar in your own words first, and never call the same tool " +
+  "again for a request you already called it for; that just makes the user confirm the " +
+  "same thing twice or more. Never mention tool or function names, and never include code, " +
+  "JSON, or programming syntax of any kind in your reply — describe outcomes in plain " +
+  "language only (e.g. \"I found some results for that\" or \"Chrome should be open now\"), " +
+  "never HOW you did it.";
 
 // Defensive backstop, not the primary fix (that's the system prompt above): if a
 // model still verbalizes a tool call as text instead of using the structured

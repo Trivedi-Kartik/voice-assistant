@@ -214,10 +214,12 @@ export const AUTOMATION_TOOL_SCHEMAS: ToolSchema[] = [
       name: "computer_use_task",
       description:
         "Use ONLY when a request needs clicking/typing inside an app or website beyond what the other tools " +
-        "cover (e.g. 'add this to my cart on Amazon', 'send a WhatsApp message to X saying Y'). Takes " +
-        "screenshots and controls the mouse/keyboard step by step toward the goal. Always asks the user to " +
-        "confirm first, and again before any step that submits a purchase, sends a message, or deletes " +
-        "something. Can misclick sometimes — describe the goal precisely.",
+        "cover (e.g. 'add this to my cart on Amazon', 'send a WhatsApp message to X saying Y'). Call this " +
+        "immediately when the request is clear enough — do NOT ask the user in your own words whether to " +
+        "proceed first; the system already asks its own confirmation as soon as you call this, so asking " +
+        "yourself first only makes the user confirm twice. Takes screenshots and controls the mouse/keyboard " +
+        "step by step toward the goal, and again asks before any step that submits a purchase, sends a " +
+        "message, or deletes something. Can misclick sometimes — describe the goal precisely.",
       parameters: {
         type: "object",
         properties: {
