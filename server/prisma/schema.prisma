@@ -39,6 +39,7 @@ model User {
   conversations   Conversation[]
   memoryFacts     MemoryFact[]
   automationSteps AutomationStep[]
+  tasks           Task[]
 
   @@map("users")
 }
@@ -56,6 +57,7 @@ model Device {
 
   refreshTokens   RefreshToken[]
   toolInvocations ToolInvocation[]
+  tasks           Task[]
 
   @@map("devices")
 }
@@ -129,6 +131,7 @@ model Conversation {
   archived     Boolean   @default(false)
 
   messages Message[]
+  tasks    Task[]
 
   @@index([userId, lastActiveAt])
   @@map("conversations")
@@ -148,6 +151,52 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@map("messages")
+}
+
+// Phase 1 slice 2 (see docs/IMPLEMENTATION_ROADMAP.md): the first step toward
+// a real task engine, deliberately scoped to "just start recording what
+// already happens" — no behavior change. A Task today maps 1:1 to one
+// Session.runTurn() call (one audio_end); TaskStep maps 1:1 to one iteration
+// of that turn's tool-calling loop. Both are written best-effort/fire-and-
+// forget from ws/session.ts, exactly like ToolInvocation/AutomationStep
+// already are — a write failure here must never affect the live turn.
+// Deliberately lean: this does NOT duplicate ToolInvocation's/AutomationStep's
+// own args/result detail, only enough to reconstruct the shape of a turn
+// (which step did what, in what order) — cross-reference those tables for
+// full detail on any one tool call.
+model Task {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId       String    @map("device_id")
+  device         Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  conversationId String    @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  goal           String?   @db.Text // the turn's transcript, best-effort — not guaranteed present
+  status         String    @default("running") // 'running' | 'completed' | 'paused' | 'failed'
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  steps TaskStep[]
+
+  @@index([userId, startedAt])
+  @@index([conversationId])
+  @@map("tasks")
+}
+
+model TaskStep {
+  id            String   @id @default(uuid())
+  taskId        String   @map("task_id")
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  stepIndex     Int      @map("step_index")
+  kind          String   // 'tool_call' | 'server_tool' | 'automation' | 'confirmation_gate' | 'assistant_text'
+  toolName      String?  @map("tool_name")
+  resultOk      Boolean? @map("result_ok")
+  resultMessage String?  @map("result_message") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([taskId, stepIndex])
+  @@map("task_steps")
 }
 
 // Per-user preference memory (Phase 2) — e.g. "always search in Chrome, not

@@ -2,36 +2,24 @@ import type { WebSocket } from "ws";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import type { ClientMessage, ServerMessage, ToolResult } from "../protocol.js";
-import { runLlmStep, type ChatMessage } from "../llm.js";
+import type { ChatMessage } from "../llm.js";
 import { transcribeAudio } from "../stt.js";
 import { isGroqRateLimit, isRetryableToolUseFailure, getRetryAfterSeconds, formatWaitTime } from "../groqErrors.js";
-import {
-  toolSchemasForCapabilities,
-  SERVER_TOOL_SCHEMAS,
-  SERVER_TOOL_NAMES,
-  AUTOMATION_TOOL_SCHEMAS,
-  CONFIRMATION_PROMPTS,
-} from "../tools/schemas.js";
+import { SERVER_TOOL_NAMES } from "../tools/schemas.js";
 import { AutomationRunner, type AutomationOutcome } from "../automation/runner.js";
-import { TOOL_NAMES } from "../tools/toolNames.js";
 import { LANGUAGE_NAMES, type LanguageCode } from "../i18n/languages.js";
 import { getMessages } from "../i18n/messages.js";
 import { classifyConfirmation } from "../i18n/confirmation.js";
-import { getConfirmationPrompt } from "../i18n/confirmationPrompts.js";
 import { resolveGroqKey } from "../groqKey.js";
+import { runToolLoop } from "../toolLoop.js";
 import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
 import { redis, conversationKey, CONVERSATION_TTL_SECONDS } from "../redis.js";
 import { db } from "../db.js";
 import { tryAcquireUserLock, releaseUserLock } from "./userLock.js";
 import { createConversation, appendMessage } from "../memory/conversationStore.js";
 import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../memory/memoryStore.js";
+import { createTask, appendTaskStep, completeTask, type TaskStatus, type TaskStepKind } from "../tasks/taskStore.js";
 
-// Explicit about never verbalizing tool/function mechanics: without this, models
-// occasionally narrate their own tool usage in plain-text form (e.g. literally
-// writing "web_search(query: ...)" as if it were prose) instead of using the
-// structured tool-calling mechanism — that text then gets spoken/shown to the
-// user verbatim. sanitizeAssistantText() below is the defensive backstop for
-// when a model does this anyway.
 // The rename to "Karvix" (see docs/CHANGELOG.md) only ever touched branding
 // surfaces (window title, tray, package.json) — this prompt was never
 // updated, so the model had no idea its own name was Karvix. Confirmed via
@@ -51,49 +39,6 @@ const SYSTEM_PROMPT =
   "JSON, or programming syntax of any kind in your reply — describe outcomes in plain " +
   "language only (e.g. \"I found some results for that\" or \"Chrome should be open now\"), " +
   "never HOW you did it.";
-
-// Defensive backstop, not the primary fix (that's the system prompt above): if a
-// model still verbalizes a tool call as text instead of using the structured
-// mechanism, never speak/show raw pseudo-code to the user. Confirmed real
-// symptom, not hypothetical — reported from actual usage. Two shapes seen live:
-// bare "web_search(query: ...)" prose, and a pseudo-XML wrapper like
-// "<function(web_search){\"query\": \"...\"}</function>". Built from TOOL_NAMES
-// so every current tool is covered, not just whichever ones prompted the first fix.
-const TOOL_NAME_ALTERNATION = TOOL_NAMES.join("|");
-const BARE_CALL_PATTERN = new RegExp(`\\b(${TOOL_NAME_ALTERNATION})\\s*\\([^)]*\\)`, "gi");
-const FUNCTION_TAG_PATTERN = /<\/?function\b[^>]*>/gi;
-// Non-global twin of the two patterns above, used only for detection (see
-// looksLikeLeakedToolCall below) — deliberately a separate regex object, not
-// .test() on the global ones: a global regex's .test() mutates its own
-// lastIndex, so reusing BARE_CALL_PATTERN/FUNCTION_TAG_PATTERN here would give
-// wrong answers on alternating calls depending on prior state.
-const LEAK_DETECT_PATTERN = new RegExp(`(<\\/?function\\b[^>]*>)|(\\b(${TOOL_NAME_ALTERNATION})\\s*\\([^)]*\\))`, "i");
-
-// Distinct from the documented tool_use_failed retry in llm.ts (a 400 the SDK
-// throws): here Groq returns 200 with toolCalls empty because the model chose
-// to write the call as prose instead of using the real mechanism. Confirmed
-// live: "search for X" produced exactly this — no tool ever ran. Retry a
-// couple of times before falling back to sanitizeAssistantText's honest
-// failure message, same self-healing spirit as the other retry.
-const MAX_LEAKED_CALL_RETRIES = 2;
-
-function looksLikeLeakedToolCall(text: string): boolean {
-  return LEAK_DETECT_PATTERN.test(text);
-}
-
-function sanitizeAssistantText(text: string, language: string): string {
-  let cleaned = text.replace(/```[\s\S]*?```/g, "").trim();
-  cleaned = cleaned.replace(FUNCTION_TAG_PATTERN, "").trim();
-  cleaned = cleaned.replace(BARE_CALL_PATTERN, "").trim();
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
-  const messages = getMessages(language);
-  // A leak was actually caught and stripped — say so honestly rather than
-  // falsely implying success with a generic "Done."
-  if (cleaned.length === 0 && text.trim().length > 0) {
-    return messages.leakedCallFallback;
-  }
-  return cleaned.length > 0 ? cleaned : messages.doneFallback;
-}
 
 // Phase 2: relevant memories (semantic search over this user's remembered
 // preferences, see memory/memoryStore.ts) get folded into the system prompt
@@ -139,7 +84,6 @@ const TOOL_TIMEOUT_MS = 12_000;
 const TOOL_TIMEOUT_OVERRIDES: Partial<Record<string, number>> = {
   add_custom_app: 90_000,
 };
-const MAX_TOOL_LOOP_STEPS = 6; // bounded — a misbehaving model can't hang a session forever
 
 // classifyConfirmation moved to i18n/confirmation.ts (per-language
 // YES_WORDS/NO_WORDS) — still the same deliberately-simple keyword matching,
@@ -277,6 +221,23 @@ export class Session {
     if (audio.length === 0) return;
 
     const messages = getMessages(this.language);
+    // Phase 1 slice 2: one Task per runTurn() call, created once a real
+    // transcript exists (nothing worth recording before that). Declared here,
+    // outside the try block, so the catch block below can still mark it
+    // failed. `undefined` (create failed, or never reached) means every
+    // task-recording call below is a safe no-op — see taskStore.ts.
+    let taskId: string | undefined;
+    let taskStepCounter = 0;
+    let taskFinalStatus: TaskStatus = "completed";
+    const recordTaskStep = (kind: TaskStepKind, toolName?: string, result?: ToolResult) => {
+      if (!taskId) return;
+      void appendTaskStep(taskId, taskStepCounter++, {
+        kind,
+        toolName,
+        resultOk: result?.ok,
+        resultMessage: result?.message,
+      }).catch((err) => console.error("[session] appendTaskStep failed", err));
+    };
 
     if (!tryAcquireUserLock(this.userId)) {
       this.send({
@@ -341,6 +302,11 @@ export class Session {
         return undefined;
       });
 
+      taskId = await createTask(this.userId, this.deviceId, this.conversationId, transcript).catch((err) => {
+        console.error("[session] createTask failed", err);
+        return undefined;
+      });
+
       // This turn's transcript is the answer to a question asked last turn,
       // not a new request — resolve it before anything else.
       //
@@ -375,8 +341,14 @@ export class Session {
                 ? await this.handleServerTool(pending.name, pending.args, userMessageId)
                 : await this.dispatchToolCall(callId, pending.name, pending.args);
           this.history.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(result) });
+          recordTaskStep(
+            pending.name === "computer_use_task" ? "automation" : SERVER_TOOL_NAMES.has(pending.name) ? "server_tool" : "tool_call",
+            pending.name,
+            result
+          );
           if (this.pendingAutomationConfirm) {
             await this.speakAndEndTurn(this.pendingAutomationConfirmText!);
+            if (taskId) void completeTask(taskId, "paused").catch((err) => console.error("[session] completeTask failed", err));
             await this.finishTurnEarly();
             return;
           }
@@ -405,8 +377,10 @@ export class Session {
         });
         const result = await this.resumeAutomation(proceed);
         this.history.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(result) });
+        recordTaskStep("automation", "computer_use_task", result);
         if (this.pendingAutomationConfirm) {
           await this.speakAndEndTurn(this.pendingAutomationConfirmText!);
+          if (taskId) void completeTask(taskId, "paused").catch((err) => console.error("[session] completeTask failed", err));
           await this.finishTurnEarly();
           return;
         }
@@ -418,65 +392,28 @@ export class Session {
       });
       this.history[0] = { role: "system", content: buildSystemPrompt(relevantMemories, this.language) };
 
-      const tools = [...toolSchemasForCapabilities(this.capabilities), ...SERVER_TOOL_SCHEMAS, ...AUTOMATION_TOOL_SCHEMAS];
+      // Phase 1 slice 3: the tool-calling loop itself now lives in
+      // ../toolLoop.ts, extracted specifically so it's callable independent
+      // of a live WS connection — see docs/TARGET_ARCHITECTURE.md §3. Every
+      // side effect it needs goes through this small deps object; it has no
+      // notion of "Session" or "WebSocket" at all.
+      const loopResult = await runToolLoop({
+        apiKey,
+        language: this.language,
+        capabilities: this.capabilities,
+        conversationId: this.conversationId,
+        history: this.history,
+        userMessageId,
+        dispatchToolCall: (callId, name, args) => this.dispatchToolCall(callId, name, args),
+        handleServerTool: (name, args, sourceMessageId) => this.handleServerTool(name, args, sourceMessageId),
+        speakAndEndTurn: (text) => this.speakAndEndTurn(text),
+        recordTaskStep,
+        send: (msg) => this.send(msg),
+      });
+      this.pendingConfirmation = loopResult.pendingConfirmation;
+      taskFinalStatus = loopResult.outcome === "paused" ? "paused" : "completed";
 
-      for (let step = 0; step < MAX_TOOL_LOOP_STEPS; step++) {
-        let assistantMessage, toolCalls;
-        for (let leakAttempt = 0; ; leakAttempt++) {
-          ({ assistantMessage, toolCalls } = await runLlmStep(apiKey, this.history, tools));
-          const leaked = toolCalls.length === 0 && looksLikeLeakedToolCall(assistantMessage.content);
-          if (!leaked || leakAttempt >= MAX_LEAKED_CALL_RETRIES) break;
-          console.warn(`[llm] retrying leaked tool-call-as-text (attempt ${leakAttempt + 1}/${MAX_LEAKED_CALL_RETRIES})`);
-        }
-        this.history.push(assistantMessage);
-
-        if (toolCalls.length === 0) {
-          const finalText = sanitizeAssistantText(assistantMessage.content, this.language);
-          this.send({ type: "assistant_text", text: finalText });
-          await appendMessage(this.conversationId, "assistant", finalText).catch((err) =>
-            console.error("[session] appendMessage(assistant) failed", err)
-          );
-          break;
-        }
-
-        let awaitingConfirmation = false;
-        for (const call of toolCalls) {
-          const confirmationPrompt = CONFIRMATION_PROMPTS[call.name];
-          if (confirmationPrompt) {
-            // Never dispatch a confirmation-gated tool immediately — always
-            // answer its tool_call with a placeholder and let a later turn
-            // (see above) resolve it for real. If two such calls land in
-            // the same batch, only the first becomes resolvable via
-            // pendingConfirmation; the second is simply never run — a
-            // sensitive tool physically cannot execute without going
-            // through this state machine, however the batch is shaped.
-            this.pendingConfirmation ??= { name: call.name, args: call.args };
-            awaitingConfirmation = true;
-            this.history.push({
-              role: "tool",
-              tool_call_id: call.id,
-              content: JSON.stringify({ ok: false, message: messages.waitingForConfirmation }),
-            });
-            continue;
-          }
-          const result = SERVER_TOOL_NAMES.has(call.name)
-            ? await this.handleServerTool(call.name, call.args, userMessageId)
-            : await this.dispatchToolCall(call.id, call.name, call.args);
-          this.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
-        }
-
-        if (awaitingConfirmation) {
-          // Deterministic, not model-generated — reliable and free (no extra
-          // Groq call), and avoids relying on the model to reliably follow
-          // an "ask, don't call the tool again" instruction. See
-          // docs/ARCHITECTURE.md.
-          const pending = this.pendingConfirmation!;
-          const confirmText = getConfirmationPrompt(this.language, pending.name)!(pending.args);
-          await this.speakAndEndTurn(confirmText);
-          break;
-        }
-      }
-
+      if (taskId) void completeTask(taskId, taskFinalStatus).catch((err) => console.error("[session] completeTask failed", err));
       await this.finishTurnEarly();
     } catch (err) {
       // Both checks catch the exhausted-retries case too (see llm.ts) — these
@@ -490,6 +427,7 @@ export class Session {
           : messages.turnFailedGeneric;
       this.send({ type: "error", code: "llm_failed", message });
       console.error("[session] turn failed", err);
+      if (taskId) void completeTask(taskId, "failed").catch((e) => console.error("[session] completeTask failed", e));
     } finally {
       releaseUserLock(this.userId);
     }
