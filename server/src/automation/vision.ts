@@ -1,13 +1,15 @@
 import Groq from "groq-sdk";
 import type { AutomationAction } from "../protocol.js";
 
-// Same model as vision.ts's describeImage — the only free vision model this
-// project has access to (see the free-only constraint in docs/CHANGELOG.md).
-// Free open vision models are noticeably worse at precise click-coordinates
-// than a purpose-built computer-use model — accepted, disclosed trade-off,
-// not a bug: see CONFIRMATION_PROMPTS.computer_use_task and the risk-gated
+// Same model as vision.ts's describeImage (kept in sync — see that file's
+// comment for why this is "qwen/qwen3.8-27b" and not the "qwen3.6-27b" Groq's
+// own docs still list) — the only free vision model this project has access
+// to (see the free-only constraint in docs/CHANGELOG.md). Free open vision
+// models are noticeably worse at precise click-coordinates than a
+// purpose-built computer-use model — accepted, disclosed trade-off, not a
+// bug: see CONFIRMATION_PROMPTS.computer_use_task and the risk-gated
 // confirmation below, which exist specifically to compensate for this.
-const ACTION_MODEL = "qwen/qwen3.6-27b";
+const ACTION_MODEL = "qwen/qwen3.8-27b";
 
 const SYSTEM_PROMPT =
   "You control a computer on the user's behalf by looking at screenshots and deciding one next action at a " +
