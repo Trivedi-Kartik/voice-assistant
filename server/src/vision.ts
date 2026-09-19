@@ -1,11 +1,14 @@
 import Groq from "groq-sdk";
 
-// Confirmed via real testing: the original choice here (llama-3.2-11b-vision-preview)
-// was already decommissioned by Groq by the time this shipped ("model_decommissioned").
-// Groq's vision-model lineup has genuinely changed twice within this project's
-// lifetime — a single named constant makes the next swap a one-line fix.
-// Current per Groq's vision docs (console.groq.com/docs/vision): production status.
-const VISION_MODEL = "qwen/qwen3.6-27b";
+// Third swap of this constant, not the second — Groq's vision-model lineup
+// keeps moving. This time "qwen/qwen3.6-27b" (404 model_not_found) is still
+// listed in Groq's own docs but isn't actually enabled on this account;
+// confirmed via a real request against api.groq.com/openai/v1/models with
+// this project's own key that only "qwen/qwen3.8-27b" is present, then a
+// real multimodal completion call against it before switching (it correctly
+// identified a solid-red test image). Docs and actual account access have
+// now drifted twice — verify against the live API, not the docs, next time.
+const VISION_MODEL = "qwen/qwen3.8-27b";
 
 const DESCRIBE_PROMPT =
   "Describe what's visible in this screenshot in a few sentences, in plain conversational language — this " +
