@@ -12,11 +12,11 @@ import { TOOL_NAMES } from "./toolNames.js";
 // derivation didn't silently change anything.
 
 describe("Phase 2: TOOL_DEFINITIONS", () => {
-  it("has exactly 11 definitions with unique ids matching the known tool set", () => {
-    const expectedIds = new Set([...TOOL_NAMES, "remember_preference", "computer_use_task"]);
+  it("has exactly 12 definitions with unique ids matching the known tool set", () => {
+    const expectedIds = new Set([...TOOL_NAMES, "remember_preference", "computer_use_task", "pc_task"]);
     const ids = TOOL_DEFINITIONS.map((t) => t.id);
-    expect(ids.length).toBe(11);
-    expect(new Set(ids).size).toBe(11); // no duplicates
+    expect(ids.length).toBe(12);
+    expect(new Set(ids).size).toBe(12); // no duplicates
     expect(new Set(ids)).toEqual(expectedIds);
   });
 
@@ -42,6 +42,7 @@ describe("Phase 2: TOOL_DEFINITIONS", () => {
     expect(byKind("client")).toEqual([...TOOL_NAMES].sort());
     expect(byKind("server")).toEqual(["remember_preference"]);
     expect(byKind("automation")).toEqual(["computer_use_task"]);
+    expect(byKind("agent")).toEqual(["pc_task"]); // Karvix 2 PC agent (clients announcing "pc_agent")
   });
 
   it("no tool implements verify() yet — reserved for Phase 5", () => {

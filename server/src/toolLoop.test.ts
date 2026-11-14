@@ -138,3 +138,39 @@ describe("runToolLoop (standalone, no Session/WS)", () => {
     expect(runLlmStep).not.toHaveBeenCalled();
   });
 });
+
+describe("runToolLoop — Karvix 2 PC agent", () => {
+  // clearAllMocks doesn't drop queued mockResolvedValueOnce values left unconsumed by earlier tests.
+  beforeEach(() => vi.mocked(runLlmStep).mockReset());
+  const offered = () => (vi.mocked(runLlmStep).mock.calls[0][2] as { function: { name: string } }[]).map((t) => t.function.name);
+
+  it("offers pc_task instead of the old computer_use_task to clients announcing pc_agent", async () => {
+    vi.mocked(runLlmStep).mockResolvedValueOnce(llmText("ok"));
+    await runToolLoop(makeDeps({ capabilities: ["open_app", "pc_agent"] }));
+    expect(offered()).toContain("pc_task");
+    expect(offered()).not.toContain("computer_use_task");
+  });
+
+  it("keeps the old computer_use_task for older clients (no pc_agent feature)", async () => {
+    vi.mocked(runLlmStep).mockResolvedValueOnce(llmText("ok"));
+    await runToolLoop(makeDeps({ capabilities: ["open_app"] }));
+    expect(offered()).toContain("computer_use_task");
+    expect(offered()).not.toContain("pc_task");
+  });
+
+  it("routes pc_task to the server handler and, when it pauses, speaks its question verbatim and ends the turn", async () => {
+    vi.mocked(runLlmStep).mockResolvedValueOnce(llmToolCalls([{ id: "t1", name: "pc_task", args: { goal: "edit my list" } }]));
+    const deps = makeDeps({
+      capabilities: ["pc_agent"],
+      handleServerTool: vi.fn().mockResolvedValue({ ok: true, message: "Paused", data: { speakAndPause: "Which list do you mean?" } }),
+    });
+    const result = await runToolLoop(deps);
+    expect(result).toEqual({ outcome: "paused" });
+    expect(deps.handleServerTool).toHaveBeenCalledWith("pc_task", { goal: "edit my list" }, "msg-user-1");
+    expect(deps.dispatchToolCall).not.toHaveBeenCalled();
+    expect(deps.speakAndEndTurn).toHaveBeenCalledWith("Which list do you mean?");
+    // The pc_task call is answered in history before pausing (no dangling tool_calls).
+    expect(deps.history.at(-1)).toMatchObject({ role: "tool", tool_call_id: "t1" });
+    expect(runLlmStep).toHaveBeenCalledTimes(1);
+  });
+});

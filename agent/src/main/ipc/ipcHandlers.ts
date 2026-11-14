@@ -6,6 +6,7 @@ import { listCustomApps, removeCustomApp } from "../customApps/customAppStore.js
 import { speakNative, stopNative } from "../tts/nativeTts.js";
 import { neuralVoice } from "../voice/neuralVoice.js";
 import { requestCancelActiveAutomation } from "../automation/automationRunner.js";
+import { cancelActiveAgentTask } from "../agent/agentHost.js";
 
 export interface IpcContext {
   win: BrowserWindow;
@@ -73,7 +74,8 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   });
 
   ipcMain.on("conversation:cancelAutomation", () => {
-    requestCancelActiveAutomation((m) => ctx.connection.send(m), ctx.win);
+    // The same panel/hotkey stops either a Karvix 2 PC task or an old-style automation.
+    if (!cancelActiveAgentTask((m) => ctx.connection.send(m), ctx.win)) requestCancelActiveAutomation((m) => ctx.connection.send(m), ctx.win);
   });
 
   // Phase 1 slice 4 (server/src/toolLoop.ts's cooperative cancellation) —

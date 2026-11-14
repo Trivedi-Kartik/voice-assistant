@@ -56,6 +56,13 @@ export const AUTOMATION_TOOL_SCHEMAS: ToolSchema[] = TOOL_DEFINITIONS.filter((t)
   toSchema
 );
 
+// PC agent (Karvix 2): offered only to clients that announce the "pc_agent" feature (client_hello). Those
+// clients get it INSTEAD of the old screenshot-clicking computer_use_task (plan §6 Phase 1: old path kept
+// behind a flag for older builds).
+export const AGENT_TOOL_SCHEMAS: ToolSchema[] = TOOL_DEFINITIONS.filter((t) => t.kind === "agent").map(toSchema);
+export const AGENT_TOOL_NAMES = new Set(AGENT_TOOL_SCHEMAS.map((s) => s.function.name));
+export const PC_AGENT_FEATURE = "pc_agent";
+
 // The server-side replacement for what each tool's client-side describe()
 // used to do for the deleted dialog.showMessageBox gate — these tools now get
 // a spoken confirmation question (see ws/session.ts) instead of a popup.

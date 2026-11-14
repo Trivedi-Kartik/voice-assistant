@@ -21,6 +21,7 @@ import { createTray } from "./tray/trayMenu.js";
 import { initAutoUpdater } from "./updater/autoUpdate.js";
 import { applyContentSecurityPolicy } from "./csp.js";
 import { neuralVoice } from "./voice/neuralVoice.js";
+import { handleAgentRequest, handleAgentStatus, resetAgentTask } from "./agent/agentHost.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
 let win: BrowserWindow;
@@ -30,7 +31,8 @@ function handleServerMessage(msg: ServerMessage): void {
   switch (msg.type) {
     case "auth_ok":
       // Tell the server this build can play natural-voice audio (older builds never send this).
-      connection.send({ type: "client_hello", features: ["assistant_audio"] });
+      // "pc_agent": this build can run Karvix 2 PC tasks (server then offers pc_task instead of the old automation).
+      connection.send({ type: "client_hello", features: ["assistant_audio", "pc_agent"] });
       return;
     case "transcript":
       win.webContents.send("conversation:transcript", msg.text);
@@ -62,6 +64,12 @@ function handleServerMessage(msg: ServerMessage): void {
       conversationActive = false;
       win.webContents.send("conversation:error", { code: msg.code, message: msg.message });
       return;
+    case "agent_request":
+      void handleAgentRequest(msg, (m) => connection.send(m)).catch((err) => console.error("[agent] request failed", err));
+      return;
+    case "agent_status":
+      handleAgentStatus(msg, win);
+      return;
     case "automation_start":
     case "automation_action":
     case "automation_stop":
@@ -72,7 +80,10 @@ function handleServerMessage(msg: ServerMessage): void {
 
 function handleConnectionStatus(status: ConnectionStatus): void {
   win.webContents.send("connection:status", status);
-  if (status === "reconnecting" || status === "error" || status === "idle") resetActiveAutomation(win);
+  if (status === "reconnecting" || status === "error" || status === "idle") {
+    resetActiveAutomation(win);
+    resetAgentTask(win);
+  }
 }
 
 const connection = new Connection({

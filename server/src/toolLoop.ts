@@ -5,6 +5,9 @@ import {
   SERVER_TOOL_SCHEMAS,
   SERVER_TOOL_NAMES,
   AUTOMATION_TOOL_SCHEMAS,
+  AGENT_TOOL_SCHEMAS,
+  AGENT_TOOL_NAMES,
+  PC_AGENT_FEATURE,
   CONFIRMATION_PROMPTS,
 } from "./tools/schemas.js";
 import { TOOL_NAMES } from "./tools/toolNames.js";
@@ -95,7 +98,12 @@ export interface ToolLoopResult {
 
 export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
   const messages = getMessages(deps.language);
-  const tools = [...toolSchemasForCapabilities(deps.capabilities), ...SERVER_TOOL_SCHEMAS, ...AUTOMATION_TOOL_SCHEMAS];
+  const pcAgent = deps.capabilities.includes(PC_AGENT_FEATURE);
+  const tools = [
+    ...toolSchemasForCapabilities(deps.capabilities),
+    ...SERVER_TOOL_SCHEMAS,
+    ...(pcAgent ? AGENT_TOOL_SCHEMAS : AUTOMATION_TOOL_SCHEMAS),
+  ];
   let pendingConfirmation: { name: string; args: unknown } | undefined;
 
   for (let step = 0; step < MAX_TOOL_LOOP_STEPS; step++) {
@@ -141,11 +149,20 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
         deps.recordTaskStep("confirmation_gate", call.name);
         continue;
       }
-      const result = SERVER_TOOL_NAMES.has(call.name)
+      const serverSide = SERVER_TOOL_NAMES.has(call.name) || AGENT_TOOL_NAMES.has(call.name);
+      const result = serverSide
         ? await deps.handleServerTool(call.name, call.args, deps.userMessageId)
         : await deps.dispatchToolCall(call.id, call.name, call.args);
       deps.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
-      deps.recordTaskStep(SERVER_TOOL_NAMES.has(call.name) ? "server_tool" : "tool_call", call.name, result);
+      deps.recordTaskStep(serverSide ? "server_tool" : "tool_call", call.name, result);
+      // A server tool can end the turn with a deterministic spoken question (the PC agent asking the user
+      // something or asking for a confirmation); the answer arrives as the next voice turn.
+      const pauseWith = (result.data as { speakAndPause?: unknown } | undefined)?.speakAndPause;
+      if (typeof pauseWith === "string" && pauseWith) {
+        if (deps.isCancelled()) return { outcome: "cancelled" };
+        await deps.speakAndEndTurn(pauseWith);
+        return { outcome: "paused" };
+      }
     }
 
     // Checked again here, not just at the top of the loop: a cancel could

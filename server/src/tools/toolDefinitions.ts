@@ -11,7 +11,7 @@ import type { ToolResult } from "../protocol.js";
 // (now `riskLevel`/`confirmationPrompt`).
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";
-export type ToolKind = "client" | "server" | "automation";
+export type ToolKind = "client" | "server" | "automation" | "agent";
 
 export interface ToolDefinition {
   id: string;
@@ -227,6 +227,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         goal: { type: "string", description: "A precise, complete description of what to accomplish on screen." },
       },
+      required: ["goal"],
+    },
+  },
+  {
+    id: "pc_task",
+    description:
+      "Carry out a task on the user's computer that takes several steps across files, apps and windows — e.g. " +
+      "'open notepad, add buy milk to my shopping list and save it', 'make a folder called Taxes in Documents and move " +
+      "my PDFs there', 'copy what's on my clipboard into a new note'. Describe the full goal in the user's words. " +
+      "For a single simple action (just opening an app, a web search, one URL, a reminder) use those tools instead.",
+    kind: "agent",
+    // Not gated as a whole: the agent confirms each risky step (delete/send/buy/overwrite) with the user itself.
+    riskLevel: "low",
+    permissions: ["files", "process-launch", "ui-control"],
+    inputSchema: {
+      type: "object",
+      properties: { goal: { type: "string", description: "The user's full goal, in their own words." } },
       required: ["goal"],
     },
   },

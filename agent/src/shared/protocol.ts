@@ -16,7 +16,11 @@ export type ClientMessage =
   | { type: "task_cancel" }
   // Sent once after auth_ok to say which optional features this client build supports. Older clients
   // never send it, so the server keeps behaving exactly as before for them (e.g. no audio).
-  | { type: "client_hello"; features: string[] };
+  | { type: "client_hello"; features: string[] }
+  // PC agent (Karvix 2): the device's answer to an agent_request (result shape depends on the kind).
+  | { type: "agent_response"; taskId: string; requestId: string; result: unknown }
+  // The user stopped the running PC task from the device (overlay Stop / hotkey).
+  | { type: "agent_cancel"; taskId: string };
 
 export type ServerMessage =
   | { type: "auth_ok" }
@@ -31,7 +35,11 @@ export type ServerMessage =
   | { type: "error"; code: ErrorCode; message: string }
   | { type: "automation_start"; taskId: string; goal: string }
   | { type: "automation_action"; taskId: string; stepIndex: number; action: AutomationAction }
-  | { type: "automation_stop"; taskId: string };
+  | { type: "automation_stop"; taskId: string }
+  // PC agent (Karvix 2): the server asks the device to look, act, or verify; device answers with agent_response.
+  | { type: "agent_request"; taskId: string; requestId: string; kind: "observe" | "act" | "verify"; action?: AgentActionWire; expect?: AgentExpectationWire }
+  // Progress for the "Karvix is working" UI.
+  | { type: "agent_status"; taskId: string; state: "started" | "step" | "waiting" | "ended"; goal?: string; text?: string; ok?: boolean };
 
 export type ErrorCode =
   | "auth_invalid"
@@ -58,4 +66,19 @@ export interface AutomationAction {
   key?: string;
   risk: "low" | "high";
   reasoning: string;
+}
+
+// PC agent wire shapes (see server/src/agent/types.ts for the full semantics).
+export interface AgentExpectationWire {
+  windowTitleContains?: string;
+  fileExists?: string;
+  fileContains?: { path: string; text: string };
+  elementNamed?: string;
+}
+
+export interface AgentActionWire {
+  name: string;
+  args: Record<string, unknown>;
+  expect?: AgentExpectationWire;
+  confirmed?: boolean;
 }

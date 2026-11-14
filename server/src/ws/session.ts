@@ -23,6 +23,10 @@ import { createConversation, appendMessage } from "../memory/conversationStore.j
 import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../memory/memoryStore.js";
 import { trimHistory } from "./historyTrim.js";
 import { speech } from "../tts/index.js";
+import { AgentRunner } from "../agent/runner.js";
+import { GroqPlanner } from "../agent/planner.js";
+import { WsAgentDevice } from "../agent/wsDevice.js";
+import type { AgentOutcome } from "../agent/types.js";
 import { createTask, appendTaskStep, completeTask, type TaskStatus, type TaskStepKind } from "../tasks/taskStore.js";
 
 // The rename to "Karvix" (see docs/CHANGELOG.md) only ever touched branding
@@ -117,6 +121,11 @@ export class Session {
   private audioOverflow = false;
   // Set by client_hello: this client build can play server-synthesized speech.
   private supportsServerAudio = false;
+  // Optional features announced by this client build (client_hello), e.g. "pc_agent".
+  private clientFeatures: string[] = [];
+  // Karvix 2 PC agent: at most one task per connection; it can span turns while it waits for an answer.
+  private activeAgent?: AgentRunner;
+  private agentDevice?: WsAgentDevice;
   private readonly pendingCalls = new Map<string, PendingCall>();
   private history: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
   // Set when a turn pauses on a tool in CONFIRMATION_PROMPTS — the *next*
@@ -221,9 +230,17 @@ export class Session {
         return;
       case "task_cancel":
         this.cancelRequested = true;
+        this.cancelAgent();
         return;
       case "client_hello":
         this.supportsServerAudio = msg.features.includes("assistant_audio");
+        this.clientFeatures = msg.features;
+        return;
+      case "agent_response":
+        if (this.activeAgent && msg.taskId === this.activeAgent.id) this.agentDevice?.handleResponse(msg.requestId, msg.result);
+        return;
+      case "agent_cancel":
+        if (this.activeAgent && msg.taskId === this.activeAgent.id) this.cancelAgent();
         return;
     }
   }
@@ -241,6 +258,7 @@ export class Session {
     // burn LLM calls and wait out a full tool timeout per step, and free any automation wait so
     // runTurn() can finish and release the user's turn lock.
     this.cancelRequested = true;
+    this.cancelAgent();
     this.activeAutomation?.abort("disconnected");
     this.activeAutomation = undefined;
     this.pendingAutomationConfirm = false;
@@ -421,6 +439,35 @@ export class Session {
       // reference to the old call at all. On decline, there's nothing to
       // answer: nothing was called, so just let the plain "no" flow into the
       // conversation as a normal user turn below.
+      // Karvix 2 PC agent waiting on the user: this transcript is its answer (a yes/no for a risky step,
+      // or the reply to its question). Same "fresh, self-contained tool_calls/tool pair" discipline as
+      // the other pauses — the original pc_task call was already answered with a placeholder.
+      if (this.activeAgent?.waiting) {
+        const runner = this.activeAgent;
+        const outcome =
+          runner.waiting === "confirm"
+            ? await runner.resumeWithConfirmation(classifyConfirmation(transcript, this.language) === "yes")
+            : await runner.resumeWithAnswer(transcript);
+        const result = this.agentOutcomeToResult(outcome);
+        const callId = uuid();
+        this.history.push({
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: callId, type: "function", function: { name: "pc_task", arguments: JSON.stringify({ goal: runner.goal }) } }],
+        });
+        this.history.push({ role: "tool", tool_call_id: callId, content: JSON.stringify(result) });
+        recordTaskStep("server_tool", "pc_task", result);
+        const pauseWith = (result.data as { speakAndPause?: string } | undefined)?.speakAndPause;
+        if (pauseWith) {
+          await this.speakAndEndTurn(pauseWith);
+          if (taskId) void completeTask(taskId, "paused").catch((err) => console.error("[session] completeTask failed", err));
+          this.currentTaskId = undefined;
+          await this.finishTurnEarly();
+          return;
+        }
+        // Finished: fall through so the model replies naturally to the task's result.
+      }
+
       if (this.pendingConfirmation) {
         const pending = this.pendingConfirmation;
         this.pendingConfirmation = undefined;
@@ -499,7 +546,7 @@ export class Session {
       const loopResult = await runToolLoop({
         apiKey,
         language: this.language,
-        capabilities: this.capabilities,
+        capabilities: [...this.capabilities, ...this.clientFeatures],
         conversationId: this.conversationId,
         history: this.history,
         userMessageId,
@@ -594,8 +641,48 @@ export class Session {
   // touch the user's OS, so there's no reason to pay a WebSocket round-trip or
   // give the client anything to execute. Unlike dispatchToolCall, this resolves
   // synchronously within the same turn.
+  private cancelAgent(): void {
+    this.activeAgent?.cancel();
+    this.agentDevice?.abort("task cancelled");
+  }
+
+  private async startAgent(args: unknown): Promise<ToolResult> {
+    const parsed = z.object({ goal: z.string().min(2).max(2000) }).safeParse(args);
+    if (!parsed.success) return { ok: false, message: "I didn't get what to do on the computer." };
+    this.cancelAgent(); // one task at a time
+    const { apiKey } = await resolveGroqKey(this.userId);
+    const taskId = uuid();
+    const device = new WsAgentDevice(taskId, (m) => this.send(m));
+    const runner = new AgentRunner({
+      id: taskId,
+      goal: parsed.data.goal,
+      language: this.language,
+      device,
+      planner: new GroqPlanner(apiKey),
+      onStatus: (s) => this.send({ type: "agent_status", taskId, ...s }),
+    });
+    this.activeAgent = runner;
+    this.agentDevice = device;
+    return this.agentOutcomeToResult(await runner.start());
+  }
+
+  // Maps a runner outcome to the pc_task tool result. ask/confirm keep the runner alive and end the turn
+  // with the question spoken verbatim (see toolLoop's speakAndPause); everything else ends the task.
+  private agentOutcomeToResult(outcome: AgentOutcome): ToolResult {
+    if (outcome.kind === "ask" || outcome.kind === "confirm") {
+      const spoken = outcome.kind === "ask" ? outcome.question : outcome.prompt;
+      return { ok: true, message: "Paused — waiting for the user's reply.", data: { speakAndPause: spoken } };
+    }
+    this.activeAgent = undefined;
+    this.agentDevice = undefined;
+    if (outcome.kind === "done") return { ok: true, message: outcome.summary };
+    if (outcome.kind === "failed") return { ok: false, message: outcome.reason };
+    return { ok: false, message: "Stopped." };
+  }
+
   private async handleServerTool(name: string, args: unknown, sourceMessageId?: string): Promise<ToolResult> {
     const messages = getMessages(this.language);
+    if (name === "pc_task") return this.startAgent(args);
     if (name === "remember_preference") {
       const parsed = z.object({ fact: z.string().min(3) }).safeParse(args);
       if (!parsed.success) return { ok: false, message: messages.factNotSaved };
