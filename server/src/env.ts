@@ -35,4 +35,7 @@ export const env = {
   ttsVoice: process.env.TTS_VOICE || "Aoede",
   // Keep under Google's free 1M characters/month by default; beyond it, clients fall back to local voice.
   ttsMonthlyCharCap: numberEnv("TTS_MONTHLY_CHAR_CAP", 900_000),
+  // Karvix 2 PC tasks per user per day on the shared free Groq key (each task costs ~3-10K tokens of the
+  // key's ~200K/day for ALL users). Users with their own Groq key (BYOK) are not capped.
+  pcTaskDailyCap: numberEnv("PC_TASK_DAILY_CAP", 5),
 };

@@ -32,6 +32,7 @@ function describe(action: AgentAction): string {
     case "file_write": return `Writing ${v("path")}`;
     case "file_read": return `Reading ${v("path")}`;
     case "file_list": return `Looking in ${v("path")}`;
+    case "file_mkdir": return `Creating folder ${v("path")}`;
     case "file_open": return `Opening ${v("path")}`;
     case "file_move": return `Moving ${v("from")}`;
     case "file_copy": return `Copying ${v("from")}`;

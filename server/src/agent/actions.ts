@@ -18,10 +18,10 @@ const s = (description: string, extra: Record<string, unknown> = {}) => ({ type:
 export const AGENT_ACTION_SCHEMAS: ToolSchema[] = [
   fn(
     "file",
-    "Files in the user's home (paths like ~/Desktop/a.txt). op: read | write | list (a folder) | move | copy | delete (to Trash) | open (in its default app). " +
+    "Files in the user's home (paths like ~/Desktop/a.txt). op: read | write | list (a folder) | mkdir (new folder) | move | copy | delete (to Trash) | open (in its default app). " +
       "write mode: create | append | overwrite. Prefer this over typing into editors.",
     {
-      op: s("Operation", { enum: ["read", "write", "list", "move", "copy", "delete", "open"] }),
+      op: s("Operation", { enum: ["read", "write", "list", "mkdir", "move", "copy", "delete", "open"] }),
       path: s("Path (source for move/copy)"),
       to: s("Destination for move/copy"),
       content: s("Text for write"),
@@ -46,7 +46,7 @@ export const AGENT_ACTION_SCHEMAS: ToolSchema[] = [
 
 // Internal action names understood by the runner, safety gate and desktop client.
 export const AGENT_ACTION_NAMES = new Set([
-  "file_read", "file_write", "file_list", "file_move", "file_copy", "file_delete", "file_open",
+  "file_read", "file_write", "file_list", "file_mkdir", "file_move", "file_copy", "file_delete", "file_open",
   "open_app", "open_url", "clipboard_read", "clipboard_write", "wait",
   "focus_window", "click", "set_text", "type_text", "hotkey", "observe",
   "ask_user", "done", "fail",
@@ -57,7 +57,13 @@ export const META_ACTIONS = new Set(["ask_user", "done", "fail"]);
 export function toInternalAction(name: string, args: Record<string, unknown>): { name: string; args: Record<string, unknown> } {
   if (name === "file" || name === "clipboard") {
     const { op, ...rest } = args;
-    return { name: `${name}_${typeof op === "string" ? op : "?"}`, args: rest };
+    const internal = `${name}_${typeof op === "string" ? op : "?"}`;
+    // The compact schema uses `path` as the source; the move/copy skills take `from`/`to`.
+    if ((internal === "file_move" || internal === "file_copy") && rest.from === undefined) {
+      const { path, ...others } = rest;
+      return { name: internal, args: { ...others, from: path } };
+    }
+    return { name: internal, args: rest };
   }
   return { name, args };
 }

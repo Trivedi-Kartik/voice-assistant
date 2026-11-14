@@ -23,6 +23,7 @@ export interface Messages {
   factSaveFailed: string;
   deviceDisconnected: string;
   waitingForConfirmation: string;
+  pcTaskLimitReached: (cap: number) => string;
   toolTimedOut: string;
   automationConfirmAction: (description: string) => string;
 }
@@ -44,6 +45,7 @@ const en: Messages = {
   factSaveFailed: "Couldn't save that right now.",
   deviceDisconnected: "Device disconnected before finishing this action.",
   waitingForConfirmation: "Waiting for the user's confirmation.",
+  pcTaskLimitReached: (cap) => `You've used today's ${cap} free computer tasks. Add your own free Groq key in Settings to remove the limit, or try again tomorrow.`,
   toolTimedOut: "Tool timed out",
   automationConfirmAction: (description) => `${description} — go ahead? Say yes to confirm.`,
 };
@@ -65,6 +67,7 @@ const hi: Messages = {
   factSaveFailed: "अभी उसे सहेज नहीं पाया।",
   deviceDisconnected: "यह काम पूरा होने से पहले डिवाइस डिस्कनेक्ट हो गया।",
   waitingForConfirmation: "उपयोगकर्ता की पुष्टि का इंतज़ार है।",
+  pcTaskLimitReached: (cap) => `आज के ${cap} मुफ़्त कंप्यूटर कार्य पूरे हो गए। सीमा हटाने के लिए सेटिंग्स में अपनी मुफ़्त Groq key जोड़ें, या कल फिर कोशिश करें।`,
   toolTimedOut: "टूल का समय समाप्त हो गया",
   automationConfirmAction: (description) => `${description} — आगे बढ़ूँ? पुष्टि के लिए हाँ कहें।`,
 };
@@ -86,6 +89,7 @@ const es: Messages = {
   factSaveFailed: "No pude guardar eso ahora mismo.",
   deviceDisconnected: "El dispositivo se desconectó antes de terminar esta acción.",
   waitingForConfirmation: "Esperando la confirmación del usuario.",
+  pcTaskLimitReached: (cap) => `Ya usaste las ${cap} tareas gratuitas de hoy en el ordenador. Añade tu propia clave gratuita de Groq en Ajustes para quitar el límite, o vuelve a intentarlo mañana.`,
   toolTimedOut: "La herramienta agotó el tiempo de espera",
   automationConfirmAction: (description) => `${description} — ¿adelante? Di sí para confirmar.`,
 };
@@ -107,6 +111,7 @@ const fr: Messages = {
   factSaveFailed: "Je n'ai pas pu enregistrer cela pour le moment.",
   deviceDisconnected: "L'appareil s'est déconnecté avant la fin de cette action.",
   waitingForConfirmation: "En attente de la confirmation de l'utilisateur.",
+  pcTaskLimitReached: (cap) => `Vous avez utilisé les ${cap} tâches gratuites d'aujourd'hui sur l'ordinateur. Ajoutez votre propre clé Groq gratuite dans les Réglages pour supprimer la limite, ou réessayez demain.`,
   toolTimedOut: "L'outil a expiré",
   automationConfirmAction: (description) => `${description} — on y va ? Dites oui pour confirmer.`,
 };
@@ -128,6 +133,7 @@ const de: Messages = {
   factSaveFailed: "Das konnte ich gerade nicht speichern.",
   deviceDisconnected: "Das Gerät hat die Verbindung getrennt, bevor diese Aktion abgeschlossen war.",
   waitingForConfirmation: "Warte auf die Bestätigung des Nutzers.",
+  pcTaskLimitReached: (cap) => `Du hast die ${cap} kostenlosen Computeraufgaben für heute aufgebraucht. Füge in den Einstellungen deinen eigenen kostenlosen Groq-Schlüssel hinzu, um das Limit aufzuheben, oder versuche es morgen erneut.`,
   toolTimedOut: "Zeitüberschreitung beim Tool",
   automationConfirmAction: (description) => `${description} — los geht's? Sag ja, um zu bestätigen.`,
 };
@@ -149,6 +155,7 @@ const it: Messages = {
   factSaveFailed: "Non sono riuscito a salvarlo in questo momento.",
   deviceDisconnected: "Il dispositivo si è disconnesso prima che questa azione fosse completata.",
   waitingForConfirmation: "In attesa della conferma dell'utente.",
+  pcTaskLimitReached: (cap) => `Hai usato le ${cap} attività gratuite di oggi sul computer. Aggiungi la tua chiave Groq gratuita nelle Impostazioni per rimuovere il limite, oppure riprova domani.`,
   toolTimedOut: "Lo strumento ha superato il tempo limite",
   automationConfirmAction: (description) => `${description} — procedo? Di' sì per confermare.`,
 };
@@ -170,6 +177,7 @@ const pt: Messages = {
   factSaveFailed: "Não consegui salvar isso agora.",
   deviceDisconnected: "O dispositivo desconectou antes de concluir esta ação.",
   waitingForConfirmation: "Aguardando a confirmação do usuário.",
+  pcTaskLimitReached: (cap) => `Você usou as ${cap} tarefas gratuitas de hoje no computador. Adicione sua própria chave gratuita do Groq em Configurações para remover o limite, ou tente amanhã.`,
   toolTimedOut: "A ferramenta expirou",
   automationConfirmAction: (description) => `${description} — posso continuar? Diga sim para confirmar.`,
 };
@@ -191,6 +199,7 @@ const th: Messages = {
   factSaveFailed: "ตอนนี้บันทึกไม่ได้",
   deviceDisconnected: "อุปกรณ์หลุดการเชื่อมต่อก่อนที่การทำงานนี้จะเสร็จสิ้น",
   waitingForConfirmation: "กำลังรอการยืนยันจากผู้ใช้",
+  pcTaskLimitReached: (cap) => `คุณใช้งานคอมพิวเตอร์ฟรีครบ ${cap} ครั้งของวันนี้แล้ว เพิ่มคีย์ Groq ฟรีของคุณเองในการตั้งค่าเพื่อยกเลิกขีดจำกัด หรือลองใหม่พรุ่งนี้`,
   toolTimedOut: "เครื่องมือหมดเวลา",
   automationConfirmAction: (description) => `${description} — ให้ทำเลยไหม? พูดว่าใช่เพื่อยืนยัน`,
 };

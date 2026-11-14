@@ -37,6 +37,17 @@ export async function checkAndConsumeTurn(userId: string, hasByok: boolean): Pro
   return { allowed: true, remaining: env.dailyTurnCap - count };
 }
 
+// Karvix 2 PC tasks: separate, much smaller daily allowance than voice turns, because one task can make
+// many planner calls. BYOK users are never capped (their own key, their own quota).
+export async function checkAndConsumePcTask(userId: string, hasByok: boolean): Promise<TurnCheck> {
+  if (hasByok) return { allowed: true, remaining: Infinity };
+  const key = `usage:pctasks:${userId}:${dayKey()}`;
+  await redis.set(key, 0, "EX", 60 * 60 * 26, "NX");
+  const count = await redis.incr(key);
+  if (count > env.pcTaskDailyCap) return { allowed: false, remaining: 0 };
+  return { allowed: true, remaining: env.pcTaskDailyCap - count };
+}
+
 // Fire-and-forget durable log for your own usage visibility — not used for the
 // live gating decision above.
 export async function recordUsage(

@@ -32,7 +32,8 @@ export interface LlmStepResult {
 // tool_use_failed retry logic below was tuned against Llama 3.3's specific
 // failure rate and needs re-verification against real usage on this model,
 // not assumed to carry over unchanged.
-const MODEL = "openai/gpt-oss-120b";
+export const DEFAULT_CHAT_MODEL = "openai/gpt-oss-120b";
+const MODEL = DEFAULT_CHAT_MODEL;
 
 // Without retrying, both failure modes below surfaced to users as an
 // intermittent "something went wrong" on completely valid requests — see
@@ -56,15 +57,24 @@ const MAX_SHORT_RATE_LIMIT_WAIT_SECONDS = 5;
 export async function runLlmStep(
   apiKey: string,
   messages: ChatMessage[],
-  tools: ToolSchema[]
+  tools: ToolSchema[],
+  opts: {
+    // Defaults to the production model; only dev tooling (the PC-agent eval) passes another one.
+    model?: string;
+    // The PC-agent planner recovers tool_use_failed itself (the rejected text is usually its final
+    // answer), so it skips the up-to-6 slow retries the voice loop relies on.
+    retryToolUseFailures?: boolean;
+  } = {}
 ): Promise<LlmStepResult> {
+  const model = opts.model ?? MODEL;
+  const retryToolUse = opts.retryToolUseFailures ?? true;
   const groq = new Groq({ apiKey });
 
   let completion;
   for (let attempt = 1; ; attempt++) {
     try {
       completion = await groq.chat.completions.create({
-        model: MODEL,
+        model,
         messages: messages as Groq.Chat.Completions.ChatCompletionMessageParam[],
         tools: tools.length ? tools : undefined,
         tool_choice: tools.length ? "auto" : undefined,
@@ -75,7 +85,7 @@ export async function runLlmStep(
       const retryAfter = rateLimited ? getRetryAfterSeconds(err) : null;
       const isLongWait = retryAfter !== null && retryAfter > MAX_SHORT_RATE_LIMIT_WAIT_SECONDS;
 
-      if (isLongWait || attempt >= MAX_GENERATION_RETRIES || !(rateLimited || isRetryableToolUseFailure(err))) {
+      if (isLongWait || attempt >= MAX_GENERATION_RETRIES || !(rateLimited || (retryToolUse && isRetryableToolUseFailure(err)))) {
         throw err;
       }
       // warn, not error: this is the expected/handled path (see comment above and

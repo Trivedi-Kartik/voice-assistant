@@ -54,6 +54,18 @@ No tests and no linter are configured in `agent/` (the `eslint-disable` comments
 - Docs worth reading before big changes: `docs/CURRENT_ARCHITECTURE.md` (as-is, verified against code), `docs/ARCHITECTURE.md` (design + failure modes), `docs/TARGET_ARCHITECTURE.md` and `docs/IMPLEMENTATION_ROADMAP.md` (phased refactor in progress), `docs/SETUP.md`, and `docs/CHANGELOG.md` for the history of why things are the way they are. Some older docs predate the vitest suite in `server/` and still say no tests exist.
 - A future "phone/browser as remote for the desktop agent" design (route a session's tool calls to a paired desktop device) was discussed but not started; a standalone browser client was tried and removed because browsers can't perform the desktop tools.
 
+## Karvix 2 PC agent (`pc_task`) — see `docs/PC_CONTROL_PLAN.md`
+
+- **Server** `server/src/agent/`: `actions.ts` (compact action schemas — keep them small: every planner call re-sends them and the shared free Groq key is capped at 8K tokens/min and ~200K tokens/day), `planner.ts` (Groq, one function call per step), `runner.ts` (loop: budgets, verification, ask/confirm pauses across voice turns, cancel), `safety.ts` (deterministic gate — never trusts the model's risk judgement), `wsDevice.ts` (device over WS with timeouts). Offered as `pc_task` only to clients whose `client_hello` includes `pc_agent`; older clients keep `computer_use_task`. Per-user daily cap: `PC_TASK_DAILY_CAP` (BYOK users exempt).
+- **Desktop** `agent/src/main/agent/`: `agentHost.ts` answers `agent_request` (observe/act/verify), `skills.ts` (home-only file ops via `paths.ts`, re-confirms delete/overwrite client-side), `desktop.ts` (observation + Windows/X11 keyboard and window focus; Wayland UI control is Phase 4).
+- **Eval** (real planner + real skills in a sandbox home, inside Electron; uses the Groq key from `server/.env` and spends its quota):
+  ```bash
+  cd agent && npm run build && (cd ../server && npm run build)
+  node_modules/electron/dist/electron --no-sandbox eval/run-eval.js [taskId ...]
+  EVAL_MODEL=openai/gpt-oss-20b node_modules/electron/dist/electron --no-sandbox eval/run-eval.js   # separate quota
+  ```
+  Tasks live in `agent/eval/tasks.js`; results in `agent/eval/last-results.json` (gitignored).
+
 ## Project skills and agents (`.claude/`)
 
 Skills (invoke by name; the ones marked ✋ only run when you ask for them):

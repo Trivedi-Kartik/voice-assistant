@@ -15,13 +15,14 @@ import { getMessages } from "../i18n/messages.js";
 import { classifyConfirmation } from "../i18n/confirmation.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { runToolLoop } from "../toolLoop.js";
-import { checkAndConsumeTurn, recordUsage } from "../rateLimit.js";
+import { checkAndConsumeTurn, checkAndConsumePcTask, recordUsage } from "../rateLimit.js";
 import { redis, conversationKey, CONVERSATION_TTL_SECONDS } from "../redis.js";
 import { db } from "../db.js";
 import { tryAcquireUserLock, releaseUserLock } from "./userLock.js";
 import { createConversation, appendMessage } from "../memory/conversationStore.js";
 import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../memory/memoryStore.js";
 import { trimHistory } from "./historyTrim.js";
+import { env } from "../env.js";
 import { speech } from "../tts/index.js";
 import { AgentRunner } from "../agent/runner.js";
 import { GroqPlanner } from "../agent/planner.js";
@@ -650,7 +651,9 @@ export class Session {
     const parsed = z.object({ goal: z.string().min(2).max(2000) }).safeParse(args);
     if (!parsed.success) return { ok: false, message: "I didn't get what to do on the computer." };
     this.cancelAgent(); // one task at a time
-    const { apiKey } = await resolveGroqKey(this.userId);
+    const { apiKey, isByok } = await resolveGroqKey(this.userId);
+    const allowance = await checkAndConsumePcTask(this.userId, isByok).catch(() => ({ allowed: true, remaining: 0 }));
+    if (!allowance.allowed) return { ok: false, message: getMessages(this.language).pcTaskLimitReached(env.pcTaskDailyCap) };
     const taskId = uuid();
     const device = new WsAgentDevice(taskId, (m) => this.send(m));
     const runner = new AgentRunner({

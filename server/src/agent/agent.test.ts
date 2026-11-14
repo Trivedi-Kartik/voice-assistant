@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentRunner, AGENT_LIMITS } from "./runner.js";
 import { classifyAction } from "./safety.js";
+import { toInternalAction, AGENT_ACTION_NAMES } from "./actions.js";
 import type { Planner, PlannerDecision } from "./planner.js";
 import type { ChatMessage } from "../llm.js";
 import type { ActionResult, AgentAction, AgentDevice, AgentStatus } from "./types.js";
@@ -212,5 +213,46 @@ describe("classifyAction (deterministic safety gate)", () => {
   });
   it("lets confirmed actions through", () => {
     expect(classifyAction(a("file_delete", { path: "~/x" }, true)).level).toBe("allow");
+  });
+});
+
+describe("toInternalAction (compact planner schema -> internal actions)", () => {
+  it("maps file/clipboard ops to the internal names the desktop understands", () => {
+    expect(toInternalAction("file", { op: "write", path: "~/a", content: "x", mode: "append" })).toEqual({ name: "file_write", args: { path: "~/a", content: "x", mode: "append" } });
+    expect(toInternalAction("clipboard", { op: "read" })).toEqual({ name: "clipboard_read", args: {} });
+    expect(toInternalAction("open_app", { app: "notepad" })).toEqual({ name: "open_app", args: { app: "notepad" } });
+  });
+  it("turns path into from for move/copy (regression: 'No path given' in the eval)", () => {
+    expect(toInternalAction("file", { op: "move", path: "~/Desktop/a.txt", to: "~/Desktop/b.txt" })).toEqual({ name: "file_move", args: { from: "~/Desktop/a.txt", to: "~/Desktop/b.txt" } });
+    expect(toInternalAction("file", { op: "copy", path: "~/x", to: "~/y" }).args).toEqual({ from: "~/x", to: "~/y" });
+  });
+  it("only ever produces names the runner knows", () => {
+    for (const op of ["read", "write", "list", "move", "copy", "delete", "open"]) expect(AGENT_ACTION_NAMES.has(toInternalAction("file", { op, path: "~" }).name)).toBe(true);
+    expect(AGENT_ACTION_NAMES.has(toInternalAction("file", { op: "explode", path: "~" }).name)).toBe(false);
+  });
+});
+
+describe("recoverRejectedGeneration (Groq rejected the model's output)", () => {
+  it("treats a fake tool call carrying a summary as done", async () => {
+    const { recoverRejectedGeneration } = await import("./planner.js");
+    const d = recoverRejectedGeneration('{"name": "answer", "arguments": {"summary": "Renamed notes.txt."}}');
+    expect(d.kind).toBe("action");
+    if (d.kind === "action") {
+      expect(d.action).toEqual({ name: "done", args: { summary: "Renamed notes.txt." } });
+      expect(d.assistant.tool_calls?.[0].id).toBe(d.toolCallId); // history stays valid
+    }
+  });
+  it("treats plain prose as text (runner nudges once, then accepts it as the summary)", async () => {
+    const { recoverRejectedGeneration } = await import("./planner.js");
+    expect(recoverRejectedGeneration("  Todo list updated with “call the plumber”. ")).toEqual({
+      kind: "text",
+      assistant: { role: "assistant", content: "Todo list updated with “call the plumber”." },
+    });
+  });
+  it("end to end: prose after the last step ends the task as done, not as a crash", async () => {
+    const { planner } = scripted([act("file_write", { path: "~/l.txt", content: "x", mode: "append" }), text("Todo list updated."), text("Todo list updated.")]);
+    const { dev } = device();
+    const { r } = runner(planner, dev);
+    await expect(r.start()).resolves.toEqual({ kind: "done", summary: "Todo list updated." });
   });
 });

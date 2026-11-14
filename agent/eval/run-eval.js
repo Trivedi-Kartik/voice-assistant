@@ -47,7 +47,7 @@ async function main() {
       act: (action) => { executed.push(action); return rpc("act", { action }); },
       verify: (expect) => rpc("verify", { expect }),
     };
-    const groq = new GroqPlanner(process.env.GROQ_API_KEY);
+    const groq = new GroqPlanner(process.env.GROQ_API_KEY, process.env.EVAL_MODEL || undefined); // EVAL_MODEL=openai/gpt-oss-20b uses a separate quota
     const planner = { next: async (m) => { llmCalls++; const d = await groq.next(m); if (d.kind === "action") actions.push(d.action); return d; } };
     const runner = new AgentRunner({ goal: task.goal, language: task.language || "en", device, planner });
 

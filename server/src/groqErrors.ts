@@ -57,6 +57,24 @@ export function isRetryableToolUseFailure(err: unknown): boolean {
   return body?.error?.code === "tool_use_failed";
 }
 
+// gpt-oss sometimes emits its reasoning as plain text instead of a function call ("Goal achieved. Need to
+// respond with done."), which Groq rejects as output_parse_failed. Seen in the PC-agent eval right after a
+// task's last real step.
+// The text/JSON the model produced that Groq rejected (tool_use_failed / output_parse_failed), if any.
+export function failedGeneration(err: unknown): string | undefined {
+  if (!(err instanceof Groq.APIError) || err.status !== 400) return undefined;
+  const body = err.error as { error?: { code?: string; failed_generation?: unknown } } | undefined;
+  const code = body?.error?.code;
+  if (code !== "tool_use_failed" && code !== "output_parse_failed") return undefined;
+  return typeof body?.error?.failed_generation === "string" ? body.error.failed_generation : undefined;
+}
+
+export function isOutputParseFailure(err: unknown): boolean {
+  if (!(err instanceof Groq.APIError) || err.status !== 400) return false;
+  const body = err.error as { error?: { code?: string } } | undefined;
+  return body?.error?.code === "output_parse_failed";
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

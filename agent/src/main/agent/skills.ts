@@ -62,6 +62,13 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
     return { ok: true, message: `${displayPath(p)} has ${list.length} item(s).`, data: { entries: list } };
   },
 
+  async file_mkdir(a) {
+    const p = resolveUserPath(str(a.args.path));
+    if (existsSync(p)) return (await fs.stat(p)).isDirectory() ? { ok: true, message: `${displayPath(p)} already exists.` } : { ok: false, message: `A file named ${displayPath(p)} already exists.` };
+    await fs.mkdir(p, { recursive: true });
+    return { ok: true, message: `Created folder ${displayPath(p)}.` };
+  },
+
   async file_move(a) {
     const from = resolveUserPath(str(a.args.from));
     let to = resolveUserPath(str(a.args.to));
