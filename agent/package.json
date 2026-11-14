@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Karvix — a voice assistant that can actually act on your computer.",
   "author": "Karvix",
+  "license": "MIT",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {

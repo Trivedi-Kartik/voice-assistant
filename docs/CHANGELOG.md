@@ -4,6 +4,17 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-14 — MIT license and automatic desktop installer builds
+
+Added `LICENSE` (MIT, © 2026 Kartik Trivedi) and `"license": "MIT"` in both `package.json` files.
+Added `.github/workflows/desktop.yml`: every push to `main` touching `agent/` builds the Windows
+installer and Linux AppImage on GitHub-hosted runners and refreshes a rolling `nightly`
+pre-release; a `v*` tag publishes a real release with the `latest*.yml` auto-update files.
+Nightlies deliberately omit `latest*.yml` so installed apps never auto-update to a nightly. The
+workflow YAML parses and `npm ci` works against the lockfile, but **the workflow has not run yet**
+(it can only run on GitHub). Builds remain unsigned (SmartScreen warning). There is still no
+Android app: the tools only exist on a desktop (see the web-client discussion in CLAUDE.md).
+
 ## 2026-11-14 — Whole-codebase audit: server hardening + desktop fixes
 
 Two independent read-only reviews (server, desktop) found real problems; every one below was

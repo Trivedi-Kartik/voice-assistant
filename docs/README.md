@@ -93,3 +93,18 @@ best pizza in Ahmedabad."*
 - [`docs/SETUP.md`](SETUP.md) — detailed setup, troubleshooting, packaging
 - [`ROADMAP.md`](../ROADMAP.md) — what's next (memory, more tools, wake-word, mobile)
 - [`docs/CHANGELOG.md`](CHANGELOG.md) — dated log of what's actually been built
+
+## Download
+
+Installers are built automatically by GitHub Actions (`.github/workflows/desktop.yml`):
+
+- **Latest build of `main`** — the rolling [`nightly` pre-release](../../../releases/tag/nightly), refreshed on every push that touches `agent/`.
+- **Stable releases** — pushing a tag like `v0.2.0` publishes a normal release (and the update files installed apps auto-update from).
+
+Windows: run `Karvix-Setup-<version>.exe` (unsigned — SmartScreen shows "Windows protected your PC": *More info → Run anyway*).
+Linux: `chmod +x Karvix-<version>.AppImage`; if it won't start, launch it from a terminal with `--no-sandbox` (see `SETUP.md`).
+There is no Android/iOS app: the assistant's tools (opening apps, screenshots, clipboard, computer control) only exist on a desktop.
+
+## License
+
+[MIT](../LICENSE) © 2026 Kartik Trivedi.

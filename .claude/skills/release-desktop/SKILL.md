@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Releasing the desktop app
 
+**CI does the building.** `.github/workflows/desktop.yml` builds the Windows installer (on a Windows runner) and the Linux AppImage on every push to `main` that touches `agent/`, and refreshes the rolling `nightly` pre-release (no `latest*.yml`, so the in-app updater ignores it). Pushing a `v*` tag publishes a real release including `latest*.yml`, which is what installed apps auto-update from. The manual steps below remain for building locally or debugging CI.
+
 Config: `agent/electron-builder.yml` (Windows NSIS `.exe`, Linux `AppImage`; `publish` → GitHub Releases, repo `Trivedi-Kartik/voice-assistant`). Installed apps auto-update from those releases (`agent/src/main/updater/autoUpdate.ts`, checked every 4h, never restarts mid-conversation).
 
 ## Before building
@@ -21,7 +23,7 @@ cd agent && npm run package    # outputs to agent/release/
 electron-builder builds only for the OS you run it on — the Windows installer must be built on Windows (or CI), the AppImage on Linux. Artifacts: `Karvix-Setup-<v>.exe`, `Karvix-<v>.AppImage`, plus `latest.yml` / `latest-linux.yml` (required for auto-update — upload them too).
 
 ## Publish (only on the user's go-ahead — this is public)
-Create a GitHub Release tagged `v<version>` and attach the installers + `latest*.yml`. There is no CI yet (`docs/TECH_DEBT.md` #2).
+Bump `agent/package.json` `version`, commit, then `git tag v<version> && git push origin v<version>` — CI builds and publishes the release. (Manual fallback: create a GitHub Release tagged `v<version>` and attach the installers + `latest*.yml`.)
 
 ## Known limits to repeat to testers
 - Windows installer is unsigned → SmartScreen warning ("More info → Run anyway").

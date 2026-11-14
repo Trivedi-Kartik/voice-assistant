@@ -1,0 +1,78 @@
+name: Desktop installers
+
+# Every push to main builds the Windows installer and Linux AppImage and refreshes a rolling
+# "nightly" pre-release anyone can download from. Pushing a version tag (v1.2.3) publishes a real
+# release instead — that one carries the latest*.yml files installed apps auto-update from.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths: ["agent/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create/replace releases
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: agent
+        shell: bash # same quoting rules on Windows and Linux runners (PowerShell mangles `npm run x -- --flag`)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      # --publish never: electron-builder must not try to publish by itself; the release job does.
+      - run: npm run package -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false" # no code-signing certificate is configured
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            agent/release/*.exe
+            agent/release/*.exe.blockmap
+            agent/release/*.AppImage
+            agent/release/latest*.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "Karvix $GITHUB_REF_NAME" --generate-notes
+      - name: Refresh nightly pre-release
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          # latest*.yml is deliberately NOT uploaded here, so a nightly can never be picked up by
+          # the in-app auto-updater (which should only follow real tagged releases).
+          rm -f dist/latest*.yml
+          gh release delete nightly --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create nightly dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
+            --target "$GITHUB_SHA" --title "Latest build (main)" \
+            --notes "Automatic build of commit ${GITHUB_SHA::7}. Unsigned — Windows SmartScreen will warn (More info → Run anyway). Linux: chmod +x the AppImage; launch from a terminal with --no-sandbox if it won't start."
