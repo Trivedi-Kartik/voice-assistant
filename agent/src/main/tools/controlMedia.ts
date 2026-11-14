@@ -41,6 +41,8 @@ function keybdEventScript(vk: number): string {
 
 export const controlMediaTool: ToolDefinition<{ action: Action }> = {
   name: "control_media",
+  riskLevel: "low",
+  permissions: ["os-control"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ action }) {
     // Windows-only (PowerShell/user32.dll) — deviceCapabilities.ts already

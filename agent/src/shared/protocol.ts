@@ -10,7 +10,10 @@ export type ClientMessage =
   | { type: "resume"; conversationId: string }
   | { type: "automation_observation"; taskId: string; stepIndex: number; screenshot: string }
   | { type: "automation_action_result"; taskId: string; stepIndex: number; result: ToolResult }
-  | { type: "automation_cancel"; taskId: string };
+  | { type: "automation_cancel"; taskId: string }
+  // Cancels the current in-flight turn's tool-calling loop (not automation-
+  // specific) — see server/src/toolLoop.ts's cooperative cancellation check.
+  | { type: "task_cancel" };
 
 export type ServerMessage =
   | { type: "auth_ok" }

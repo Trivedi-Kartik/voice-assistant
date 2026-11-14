@@ -7,6 +7,8 @@ const argsSchema = z.object({ app: z.string() });
 
 export const openAppTool: ToolDefinition<{ app: string }> = {
   name: "open_app",
+  riskLevel: "low",
+  permissions: ["process-launch"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ app }) {
     const entry = lookupApp(app);

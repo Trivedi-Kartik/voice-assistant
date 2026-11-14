@@ -22,8 +22,24 @@ export function isAutomationActive(): boolean {
 
 // Wired to the same hotkey/mic-button press used to end a normal session —
 // "one control, one meaning: stop" (see renderer/App.tsx).
-export function requestCancelActiveAutomation(send: (msg: ClientMessage) => void): void {
-  if (activeTaskId) send({ type: "automation_cancel", taskId: activeTaskId });
+//
+// Also ends the task locally, immediately. It used to only tell the server and wait for an
+// automation_stop to come back — so an automation_action already in flight was still executed
+// (a real click/keystroke) after the user pressed stop, and if the connection was down nothing
+// ever cleared the "automation running" UI state.
+export function requestCancelActiveAutomation(send: (msg: ClientMessage) => void, win?: BrowserWindow): void {
+  if (!activeTaskId) return;
+  send({ type: "automation_cancel", taskId: activeTaskId });
+  activeTaskId = null; // later automation_action / automation_stop for this task are now ignored
+  win?.webContents.send("conversation:automationStop", {});
+}
+
+// Connection lost mid-task: the server will never send automation_stop, so reset here or the panel
+// stays up and every hotkey/mic press keeps being interpreted as "cancel automation".
+export function resetActiveAutomation(win: BrowserWindow): void {
+  if (!activeTaskId) return;
+  activeTaskId = null;
+  win.webContents.send("conversation:automationStop", {});
 }
 
 function scaleAction(action: AutomationAction, scale: number): AutomationAction {
@@ -69,6 +85,7 @@ export async function handleAutomationServerMessage(
   if (msg.type === "automation_action") {
     if (msg.taskId !== activeTaskId) return true; // stale/unknown task — ignore
     const result = await performAction(scaleAction(msg.action, currentScale));
+    if (msg.taskId !== activeTaskId) return true; // cancelled/reset while the action ran — don't continue the loop
     win.webContents.send("conversation:automationStep", { action: msg.action, ok: result.ok, message: result.message });
     send({ type: "automation_action_result", taskId: msg.taskId, stepIndex: msg.stepIndex, result });
     const screenshot = await captureOrBail(msg.taskId, send, win);

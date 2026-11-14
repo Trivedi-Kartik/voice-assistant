@@ -25,6 +25,8 @@ interface AppState {
   setMicState: (state: MicState) => void;
   pushTurn: (turn: ConversationTurn) => void;
   setError: (error: { code: string; message: string } | null) => void;
+  // Logout: drop the previous account's transcript/state so the next user on a shared machine never sees it.
+  resetConversation: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -40,4 +42,5 @@ export const useAppStore = create<AppState>((set) => ({
   setMicState: (state) => set({ micState: state }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns, turn] })),
   setError: (error) => set({ lastError: error }),
+  resetConversation: () => set({ turns: [], lastError: null, micState: "idle" }),
 }));

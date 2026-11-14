@@ -25,14 +25,18 @@ const SENDKEYS_NAMED_KEYS: Record<string, string> = {
 // install already.
 const MOUSE_EVENT_TYPEDEF =
   "Add-Type -TypeDefinition 'using System.Runtime.InteropServices; " +
-  'public class Input { [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint data, uint extra); }\'; ';
+  'public class Input { [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, int data, uint extra); }\'; ';
 
-// Single-quoted PowerShell strings are literal (no variable expansion) — the
-// only character needing escaping inside one is a literal single quote
-// (doubled), handled below for both click coordinates (n/a, numeric) and
-// SendKeys text/key content.
-function escapeForSingleQuotedPs(text: string): string {
-  return text.replace(/'/g, "''");
+// Text/keys are NEVER interpolated into the PowerShell script. The previous approach (doubling
+// ASCII ' inside a single-quoted string) was incomplete: PowerShell also treats the Unicode
+// quotes U+2018 U+2019 U+201A U+201B as string delimiters, so model output like "don’t" (LLMs
+// emit curly apostrophes routinely) broke the script, and on-screen content steering the vision
+// model to emit  ’; Start-Process calc; ’  became arbitrary command execution. Instead the content
+// travels as base64 ([A-Za-z0-9+/=] — nothing in it can end a string) and is decoded inside
+// PowerShell, so the script text is fixed regardless of what the model said.
+function psDecodedUtf8(text: string): string {
+  const b64 = Buffer.from(text, "utf8").toString("base64");
+  return `[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}'))`;
 }
 
 // SendKeys has its own small set of syntactically special characters
@@ -42,7 +46,8 @@ function escapeForSendKeys(text: string): string {
   return text.replace(/([+^%~(){}[\]])/g, "{$1}");
 }
 
-function scriptFor(action: AutomationAction): string | null {
+// Exported only so the script construction can be verified without a Windows machine.
+export function scriptFor(action: AutomationAction): string | null {
   switch (action.type) {
     case "click": {
       if (action.x === undefined || action.y === undefined) return null;
@@ -55,13 +60,12 @@ function scriptFor(action: AutomationAction): string | null {
     }
     case "type": {
       if (!action.text) return null;
-      const keys = escapeForSingleQuotedPs(escapeForSendKeys(action.text));
-      return `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keys}');`;
+      return `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(${psDecodedUtf8(escapeForSendKeys(action.text))});`;
     }
     case "key": {
       if (!action.key) return null;
       const keys = SENDKEYS_NAMED_KEYS[action.key] ?? escapeForSendKeys(action.key);
-      return `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${escapeForSingleQuotedPs(keys)}');`;
+      return `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(${psDecodedUtf8(keys)});`;
     }
     case "scroll": {
       const delta = action.y ?? 0;

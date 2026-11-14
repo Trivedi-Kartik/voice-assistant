@@ -12,6 +12,8 @@ export const closeAppTool: ToolDefinition<{ app: string }> = {
   // next turn (see server/src/ws/session.ts, CONFIRMATION_PROMPTS in
   // server/src/tools/schemas.ts). By the time this execute() runs, it's
   // already been confirmed. See docs/ARCHITECTURE.md.
+  riskLevel: "medium",
+  permissions: ["process-control"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ app }) {
     const entry = lookupApp(app);

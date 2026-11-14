@@ -12,6 +12,8 @@ const argsSchema = z.object({ name: z.string().min(1).max(50) });
 // right equivalent rather than a raw file picker.
 export const addCustomAppTool: ToolDefinition<{ name: string }> = {
   name: "add_custom_app",
+  riskLevel: "medium",
+  permissions: ["filesystem"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ name }) {
     return process.platform === "win32" ? addCustomAppWin(name) : addCustomAppLinux(name);

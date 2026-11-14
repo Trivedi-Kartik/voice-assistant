@@ -14,6 +14,8 @@ const argsSchema = z.object({});
 
 export const readClipboardTool: ToolDefinition<Record<string, never>> = {
   name: "read_clipboard",
+  riskLevel: "medium",
+  permissions: ["clipboard-read"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute() {
     const text = clipboard.readText().trim();

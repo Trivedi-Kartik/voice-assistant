@@ -36,6 +36,12 @@ export function App() {
   const [automationActive, setAutomationActive] = useState(false);
   const [automationGoal, setAutomationGoal] = useState("");
   const [automationSteps, setAutomationSteps] = useState<AutomationStepView[]>([]);
+  // Phase 1 slice 5: the most recent tool result's message, shown in place of
+  // the generic "Thinking…" orb caption while a multi-step turn is running.
+  // Ephemeral only — never pushed into `turns`/conversation history, so it
+  // can never become the per-tool-call "chips" this project already tried
+  // and removed for being noise (see docs/CHANGELOG.md).
+  const [currentStepLabel, setCurrentStepLabel] = useState<string | undefined>(undefined);
 
   const {
     loggedIn,
@@ -62,6 +68,10 @@ export function App() {
   // always reads useAppStore.getState() directly instead of a destructured
   // value in a handler, to avoid stale-closure/re-render races.
   const sessionActive = useRef(false);
+  // Incremented every time a session starts. A TTS promise from an earlier session can resolve late
+  // (e.g. Linux: after spd-say exits) once a NEW session is already active — without this it would
+  // start a second recorder/stream on top of the new one.
+  const sessionGeneration = useRef(0);
   const sessionInactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Same stale-closure hazard as sessionActive above, and it actually bit
   // here: toggleMic is handed to hotkey.onPress inside a mount-only effect,
@@ -82,10 +92,19 @@ export function App() {
   async function startListening() {
     setMicState("listening");
     window.jarvis.conversation.setActive(true);
-    await micCapture.current.start(() => {
-      setMicPermissionWarning(true);
+    try {
+      await micCapture.current.start(() => {
+        setMicPermissionWarning(true);
+        endSession();
+      });
+    } catch (err) {
+      // Previously an unhandled rejection: micState stayed "listening", sessionActive stayed true and
+      // main's conversationActive stayed true (blocking auto-update) until the app was restarted.
+      console.error("[mic] couldn't start recording", err);
+      setError({ code: "internal", message: "Couldn't start recording — check your microphone and try again." });
       endSession();
-    });
+      return;
+    }
 
     if (!sessionActive.current) return; // permission was denied above
 
@@ -103,6 +122,13 @@ export function App() {
   // currently active — every sub-call here is already a no-op in that case
   // (MicCapture.stop() checks its own recorder state; SpeechSynthesis
   // cancel()/spd-say -C are no-ops with nothing playing).
+  //
+  // Real gap this used to have (Phase 1 slice 4): every sub-call below is
+  // purely client-side. If the server was already mid-tool-loop (micState
+  // "thinking" — recording already stopped, so micCapture.stop() is a no-op),
+  // pressing stop here never told it anything, so it kept running the whole
+  // turn anyway and its eventual reply/tool call still landed. cancelTask()
+  // fixes that — see server/src/toolLoop.ts's cooperative cancellation.
   function endSession() {
     if (sessionInactivityTimer.current !== null) {
       clearTimeout(sessionInactivityTimer.current);
@@ -112,7 +138,9 @@ export function App() {
     silenceDetector.current.stop();
     micCapture.current.stop();
     ttsEngine.current.stop();
+    window.jarvis.conversation.cancelTask();
     setMicState("idle");
+    setCurrentStepLabel(undefined);
     window.jarvis.conversation.setActive(false);
   }
 
@@ -135,6 +163,7 @@ export function App() {
 
     if (current === "idle") {
       sessionActive.current = true;
+      sessionGeneration.current += 1;
       startListening();
       return;
     }
@@ -153,7 +182,14 @@ export function App() {
 
     isMicPermissionGranted().then((granted) => setMicPermissionWarning(!granted));
 
-    window.jarvis.auth.onSessionChanged((s) => setLoggedIn(s.loggedIn));
+    window.jarvis.auth.onSessionChanged((s) => {
+      setLoggedIn(s.loggedIn);
+      if (!s.loggedIn) {
+        // Logout mid-session used to leave the recorder running and the old transcript on screen.
+        endSession();
+        useAppStore.getState().resetConversation();
+      }
+    });
     window.jarvis.connection.onStatus((status) => {
       setConnectionStatus(status);
       // If the connection itself is the problem, no server response
@@ -171,6 +207,7 @@ export function App() {
     window.jarvis.conversation.onTranscript((text) => {
       pushTurn({ role: "user", text });
       setMicState("thinking");
+      setCurrentStepLabel(undefined);
       // A real utterance made it all the way to a transcript — the
       // inactivity timer (armed in startListening for "nothing said at
       // all") is no longer the relevant risk for this listening period.
@@ -183,8 +220,18 @@ export function App() {
 
     window.jarvis.conversation.onAssistantText((text) => {
       pushTurn({ role: "assistant", text });
+      setCurrentStepLabel(undefined);
+      // A reply that was already in flight when the user pressed stop is still shown, but not spoken
+      // (and doesn't flip the orb to "speaking" after the user ended the session).
+      if (!sessionActive.current) {
+        setMicState("idle");
+        window.jarvis.conversation.setActive(false);
+        return;
+      }
       setMicState("speaking");
+      const generation = sessionGeneration.current;
       ttsEngine.current.speak(text, useAppStore.getState().language).then(() => {
+        if (generation !== sessionGeneration.current) return; // belongs to a session that has since ended
         // Guards the race where the user manually ended the session (or it
         // was ended by a connection/error event) while this reply was still
         // being spoken — without this check, this callback would resume
@@ -215,6 +262,15 @@ export function App() {
     window.jarvis.conversation.onAutomationStop(() => {
       automationActiveRef.current = false;
       setAutomationActive(false);
+    });
+
+    // Phase 1 slice 5: this event already existed and was already being sent
+    // from main/index.ts after every client-dispatched tool call resolves —
+    // it just had zero listeners since the old activity-chips UI that used
+    // it was removed. Reconnecting it here, to the ephemeral orb caption
+    // only, not to conversation history.
+    window.jarvis.conversation.onToolActivity(({ result }) => {
+      setCurrentStepLabel(result.message);
     });
 
     window.jarvis.hotkey.onPress(toggleMic);
@@ -298,7 +354,7 @@ export function App() {
           </div>
           <div className={`orb-label${micState !== "idle" ? " active" : ""}`}>
             <span className="dot" />
-            <span>{ORB_LABELS[micState]}</span>
+            <span>{micState === "thinking" && currentStepLabel ? currentStepLabel : ORB_LABELS[micState]}</span>
           </div>
           {micState !== "idle" && <p className="hint">{t.app.continuousSessionHint}</p>}
         </div>

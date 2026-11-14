@@ -13,7 +13,7 @@ import { authManager } from "./auth/authManager.js";
 import { Connection, type ConnectionStatus } from "./ws/connection.js";
 import { HotkeyTriggerSource } from "./hotkey/hotkeyTriggerSource.js";
 import { dispatchToolCall } from "./tools/index.js";
-import { handleAutomationServerMessage } from "./automation/automationRunner.js";
+import { handleAutomationServerMessage, resetActiveAutomation } from "./automation/automationRunner.js";
 import { startReminderScheduler } from "./reminders/reminderScheduler.js";
 import { registerIpcHandlers } from "./ipc/ipcHandlers.js";
 import { createMainWindow } from "./window.js";
@@ -61,6 +61,7 @@ function handleServerMessage(msg: ServerMessage): void {
 
 function handleConnectionStatus(status: ConnectionStatus): void {
   win.webContents.send("connection:status", status);
+  if (status === "reconnecting" || status === "error" || status === "idle") resetActiveAutomation(win);
 }
 
 const connection = new Connection({
@@ -109,10 +110,27 @@ app.whenReady().then(async () => {
   );
 
   const restored = await authManager.tryRestoreSession();
-  if (restored) {
+  if (restored === "restored") {
     await connection.connect();
   }
-  win.webContents.send("auth:sessionChanged", { loggedIn: restored });
+  win.webContents.send("auth:sessionChanged", { loggedIn: restored === "restored" });
+
+  // Offline / server cold-starting at launch: the stored token is intact (see tryRestoreSession),
+  // so keep trying in the background and sign the user in as soon as the server answers, rather
+  // than leaving them on the login screen needing their password. Render's cold start is ~1 min.
+  if (restored === "unavailable") {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await new Promise((r) => setTimeout(r, 10_000));
+      if (authManager.isLoggedIn()) return; // user logged in manually meanwhile
+      const retry = await authManager.tryRestoreSession();
+      if (retry === "unavailable") continue;
+      if (retry === "restored") {
+        await connection.connect();
+        win.webContents.send("auth:sessionChanged", { loggedIn: true });
+      }
+      return;
+    }
+  }
 });
 
 app.on("window-all-closed", () => {

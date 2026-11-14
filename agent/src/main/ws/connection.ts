@@ -23,6 +23,7 @@ export class Connection {
   private ws: WebSocket | null = null;
   private retryCount = 0;
   private manualStop = true;
+  private reconnectTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly callbacks: ConnectionCallbacks) {}
 
@@ -34,14 +35,33 @@ export class Connection {
 
   disconnect(): void {
     this.manualStop = true;
-    this.ws?.close();
+    this.clearReconnectTimer();
+    this.detachSocket();
+    this.setStatus("idle"); // the detached socket's own "close" handler (which used to emit this) is gone
   }
 
   // Manual "Retry connection" action after MAX_RETRIES_BEFORE_MANUAL silent attempts.
   retryNow(): void {
     this.retryCount = 0;
     this.manualStop = false;
-    this.open();
+    void this.open();
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
+  // Closes the current socket and stops listening to it. close() is asynchronous, so without
+  // detaching, the old socket's late "close" event would (after a quick logout/login or a retry)
+  // schedule a reconnect and open a SECOND live socket whose messages still reach the app.
+  private detachSocket(): void {
+    const old = this.ws;
+    this.ws = null;
+    if (!old) return;
+    old.removeAllListeners();
+    old.on("error", () => undefined); // a detached socket erroring must not become an unhandled 'error'
+    old.close();
   }
 
   send(msg: ClientMessage): void {
@@ -55,15 +75,21 @@ export class Connection {
   }
 
   private async open(): Promise<void> {
+    this.clearReconnectTimer();
+    this.detachSocket();
     this.setStatus(this.retryCount > 0 ? "reconnecting" : "connecting");
 
     let ticket: string;
     try {
       ticket = await authManager.getWsTicket();
     } catch {
-      this.setStatus("error");
+      // A brief network blip here used to end the backoff chain after one attempt (the user had to
+      // click Retry). Route it through the same retry policy as a dropped socket.
+      if (this.manualStop) return;
+      this.scheduleReconnect();
       return;
     }
+    if (this.manualStop) return; // disconnect() was called while the ticket was being fetched
 
     const ws = new WebSocket(`${SERVER_WS_URL}/ws?ticket=${encodeURIComponent(ticket)}`);
     this.ws = ws;
@@ -83,6 +109,7 @@ export class Connection {
     });
 
     ws.on("close", () => {
+      if (ws !== this.ws) return; // superseded by a newer socket
       if (this.manualStop) {
         this.setStatus("idle");
         return;
@@ -103,7 +130,9 @@ export class Connection {
     this.retryCount += 1;
     const delay = Math.min(1000 * 2 ** (this.retryCount - 1), MAX_BACKOFF_MS);
     this.setStatus("reconnecting");
-    setTimeout(() => {
+    this.clearReconnectTimer();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (!this.manualStop) void this.open();
     }, delay);
   }

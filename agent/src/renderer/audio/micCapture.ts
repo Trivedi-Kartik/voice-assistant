@@ -14,6 +14,11 @@ export class MicCapture {
   // WebM file the server hands to Whisper. This was a real, confirmed bug:
   // intermittent Groq "could not process file" errors, worse on short recordings.
   private sendChain: Promise<void> = Promise.resolve();
+  // Bumped by every start() and every stop(). start() awaits getUserMedia (seconds, on the first
+  // permission prompt); if the user pressed Stop in that window, stop() was a no-op (no recorder
+  // yet) and start() then resumed and began recording anyway — mic hot and streaming with the UI
+  // showing idle. A start() whose generation is stale must release the stream instead.
+  private generation = 0;
 
   // Preferred first — same container/codec the server always expected
   // ("utterance.webm" is hardcoded server-side in stt.ts). The plain
@@ -21,11 +26,26 @@ export class MicCapture {
   // content, not the filename extension), so a build that can't do
   // opus-in-webm specifically still records something valid rather than
   // silently using a browser-default encoding the server never expects.
+  //
+  // CONFIRMED via live A/B test on real hardware (2026-09-27): swapping this
+  // order to try plain "audio/webm" first made every single recording fail
+  // Groq's "could not process file" check, where opus-first had only failed
+  // occasionally. Opus is empirically the more reliable path on at least
+  // this machine — do not swap this order again without a new, stronger
+  // signal. The occasional opus-path failure is a separate, still-open bug
+  // (see MicCapture's singleton-reuse-across-turns note below), not fixed by
+  // codec choice.
   private static readonly MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm"];
 
   async start(onPermissionDenied: () => void): Promise<void> {
+    const generation = ++this.generation;
+    // Never leak a previous stream if one is somehow still held.
+    this.stream?.getTracks().forEach((track) => track.stop());
+    this.stream = null;
+
+    let stream: MediaStream;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       if (err instanceof DOMException && err.name === "NotAllowedError") {
         onPermissionDenied();
@@ -34,17 +54,36 @@ export class MicCapture {
       throw err;
     }
 
+    if (generation !== this.generation) {
+      stream.getTracks().forEach((track) => track.stop()); // stopped while waiting on the mic — release it
+      return;
+    }
+    this.stream = stream;
+
     // Real gap this was missing entirely: the old code hardcoded one exact
     // mimeType string with no feature check and no try/catch around
     // `new MediaRecorder(...)` — on a browser build where that string isn't
     // actually supported, this constructor throws, and nothing here caught
     // it, so a "listening" state could be shown with no recorder ever
     // created.
+    const releaseStream = () => {
+      stream.getTracks().forEach((track) => track.stop());
+      this.stream = null;
+    };
     const mimeType = MicCapture.MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t));
-    if (!mimeType) throw new Error("No supported audio recording format found on this device.");
+    if (!mimeType) {
+      releaseStream(); // the acquired mic was never released on this path
+      throw new Error("No supported audio recording format found on this device.");
+    }
 
     this.sendChain = Promise.resolve();
-    const recorder = new MediaRecorder(this.stream, { mimeType });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType });
+    } catch (err) {
+      releaseStream();
+      throw err;
+    }
     this.mediaRecorder = recorder;
 
     recorder.ondataavailable = (event) => {
@@ -64,6 +103,7 @@ export class MicCapture {
   }
 
   stop(): void {
+    this.generation++; // cancels a start() that is still waiting on getUserMedia
     if (!this.mediaRecorder || this.mediaRecorder.state === "inactive") return;
     this.mediaRecorder.onstop = () => {
       // Wait for every queued chunk to actually finish sending, IN ORDER, before

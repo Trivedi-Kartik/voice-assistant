@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld("jarvis", {
       ipcRenderer.on("conversation:automationStop", () => cb());
     },
     cancelAutomation: () => ipcRenderer.send("conversation:cancelAutomation"),
+    cancelTask: () => ipcRenderer.send("conversation:cancelTask"),
   },
   hotkey: {
     onPress: (cb: () => void) => {

@@ -36,12 +36,28 @@ interface Session {
   language: string;
 }
 
+// Distinguishes "the server rejected this token" (4xx — it's dead, clear it) from "couldn't reach
+// the server" (offline, DNS, 5xx, Render cold start — the token is still good, keep it).
+class RefreshError extends Error {
+  constructor(readonly rejected: boolean) {
+    super(rejected ? "refresh_rejected" : "refresh_unavailable");
+  }
+}
+
+export type RestoreResult = "restored" | "none" | "unavailable";
+
 // Holds the access token in main-process memory ONLY — it never crosses into the
 // renderer, which is the process most likely to ever load anything web-ish later
 // (e.g. an OAuth webview). See docs/ARCHITECTURE.md "Auth on the client".
 class AuthManager {
   private session: Session | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
+  // Latest rotated refresh token (also persisted via tokenStore).
+  private refreshToken: string | null = null;
+  // Refresh tokens are single-use and the server revokes the whole device chain if one is presented
+  // twice, so two overlapping refreshes (proactive timer + a 401-triggered one) would log the user
+  // out. Everything funnels through one in-flight promise.
+  private refreshInFlight: Promise<void> | null = null;
 
   async signup(email: string, password: string): Promise<void> {
     this.applyTokens(await this.postCredentials("/auth/signup", email, password));
@@ -53,15 +69,18 @@ class AuthManager {
 
   // Called at app startup to silently resume a session from the persisted
   // refresh token, so re-launching the app doesn't force a re-login.
-  async tryRestoreSession(): Promise<boolean> {
+  // "unavailable" keeps the stored token: it used to be deleted on ANY failure, so launching offline
+  // (or while Render was waking up) silently logged the user out for good.
+  async tryRestoreSession(): Promise<RestoreResult> {
     const refreshToken = loadRefreshToken();
-    if (!refreshToken) return false;
+    if (!refreshToken) return "none";
     try {
       await this.refresh(refreshToken);
-      return true;
-    } catch {
+      return "restored";
+    } catch (err) {
+      if (err instanceof RefreshError && !err.rejected) return "unavailable";
       clearRefreshToken();
-      return false;
+      return "none";
     }
   }
 
@@ -74,6 +93,7 @@ class AuthManager {
     }
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.session = null;
+    this.refreshToken = null;
     clearRefreshToken();
   }
 
@@ -100,10 +120,17 @@ class AuthManager {
 
   async getWsTicket(): Promise<string> {
     if (!this.session) throw new Error("not_logged_in");
-    const res = await fetch(`${SERVER_HTTP_URL}/auth/ws-ticket`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.session.accessToken}` },
-    });
+    const request = () =>
+      fetch(`${SERVER_HTTP_URL}/auth/ws-ticket`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.session!.accessToken}` },
+      });
+    let res = await request();
+    if (res.status === 401 && this.refreshToken) {
+      // Access token expired (e.g. the laptop slept past its 15-minute TTL) — refresh once and retry.
+      await this.refresh(this.refreshToken);
+      res = await request();
+    }
     if (!res.ok) throw new Error("ws_ticket_failed");
     const data = (await res.json()) as { ticket: string };
     return data.ticket;
@@ -157,29 +184,47 @@ class AuthManager {
     return res.json() as Promise<TokenResponse>;
   }
 
-  private async refresh(refreshToken: string): Promise<void> {
-    const res = await fetch(`${SERVER_HTTP_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
+  private refresh(refreshToken: string): Promise<void> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = (async () => {
+      let res: Response;
+      try {
+        res = await fetch(`${SERVER_HTTP_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch {
+        throw new RefreshError(false); // network error — token still good
+      }
+      if (!res.ok) throw new RefreshError(res.status >= 400 && res.status < 500 && res.status !== 429);
+      this.applyTokens((await res.json()) as TokenResponse);
+    })().finally(() => {
+      this.refreshInFlight = null;
     });
-    if (!res.ok) throw new Error("refresh_failed");
-    this.applyTokens((await res.json()) as TokenResponse);
+    return this.refreshInFlight;
   }
 
   private applyTokens(data: TokenResponse): void {
     this.session = { accessToken: data.accessToken, language: data.language };
+    this.refreshToken = data.refreshToken;
     saveRefreshToken(data.refreshToken);
-    this.scheduleProactiveRefresh(data.refreshToken, data.expiresIn);
+    this.scheduleProactiveRefresh(data.expiresIn);
   }
 
   // Refresh at ~80% of TTL so refresh is the common path, not just a 401-triggered
   // fallback — the user should almost never see an auth-expired hiccup mid-use.
-  private scheduleProactiveRefresh(refreshToken: string, expiresInSeconds: number): void {
+  // A transient failure used to end the chain (no retry), leaving the access token to expire
+  // silently; now it retries with a short backoff until the server actually rejects the token.
+  private scheduleProactiveRefresh(expiresInSeconds: number, delayOverrideMs?: number): void {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    const delayMs = expiresInSeconds * 0.8 * 1000;
+    const delayMs = delayOverrideMs ?? expiresInSeconds * 0.8 * 1000;
     this.refreshTimer = setTimeout(() => {
-      this.refresh(refreshToken).catch((err) => console.error("[auth] proactive refresh failed", err));
+      if (!this.refreshToken) return;
+      this.refresh(this.refreshToken).catch((err) => {
+        console.error("[auth] proactive refresh failed", err);
+        if (err instanceof RefreshError && !err.rejected) this.scheduleProactiveRefresh(expiresInSeconds, 30_000);
+      });
     }, delayMs);
   }
 }

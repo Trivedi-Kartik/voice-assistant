@@ -12,12 +12,17 @@ const execFileAsync = promisify(execFile);
 // interpolation — same pattern as appExec.linux.ts.
 let current: ChildProcess | null = null;
 
+// The language arrives over IPC from the renderer, and text is model output — validate/neutralize
+// both before they reach argv.
+const LANGUAGE_CODE = /^[a-z]{2,3}$/;
+
 export function speakNative(text: string, language: string): Promise<void> {
   return new Promise((resolve) => {
+    if (!LANGUAGE_CODE.test(language)) language = "en";
     // espeak-ng (speech-dispatcher's backend) already ships broad language
     // coverage out of the box — just needs -l with the target ISO code, same
     // codes used everywhere else (see server/src/i18n/languages.ts).
-    current = spawn("spd-say", ["-l", language, "-w", text], { stdio: "ignore" });
+    current = spawn("spd-say", ["-l", language, "-w", "--", text], { stdio: "ignore" }); // "--": a reply starting with "-" (e.g. a bullet) was parsed as an option and silently not spoken
     current.once("exit", () => {
       current = null;
       resolve();

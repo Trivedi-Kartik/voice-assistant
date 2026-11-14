@@ -6,6 +6,8 @@ const argsSchema = z.object({ query: z.string().min(1) });
 
 export const webSearchTool: ToolDefinition<{ query: string }> = {
   name: "web_search",
+  riskLevel: "low",
+  permissions: ["network"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute({ query }) {
     // Only ever opens a browser tab — never scrapes the result page's content back

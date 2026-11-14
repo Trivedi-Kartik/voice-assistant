@@ -72,7 +72,14 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   });
 
   ipcMain.on("conversation:cancelAutomation", () => {
-    requestCancelActiveAutomation((m) => ctx.connection.send(m));
+    requestCancelActiveAutomation((m) => ctx.connection.send(m), ctx.win);
+  });
+
+  // Phase 1 slice 4 (server/src/toolLoop.ts's cooperative cancellation) —
+  // tells the server to stop the in-flight turn's tool loop, not automation-
+  // specific. Safe to send even when nothing is running server-side.
+  ipcMain.on("conversation:cancelTask", () => {
+    ctx.connection.send({ type: "task_cancel" });
   });
 
   ipcMain.on("shell:openMicSettings", () => {

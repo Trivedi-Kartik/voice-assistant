@@ -11,6 +11,8 @@ export const takeScreenshotTool: ToolDefinition<Record<string, never>> = {
   // server/src/ws/session.ts, CONFIRMATION_PROMPTS in
   // server/src/tools/schemas.ts) — by the time this execute() runs, it's
   // already been confirmed.
+  riskLevel: "medium",
+  permissions: ["screen-capture", "network"],
   parseArgs: (raw) => argsSchema.parse(raw),
   async execute() {
     // Split into two try/catches, not one — capture (local, Electron) and

@@ -42,6 +42,7 @@ export interface JarvisApi {
     onAutomationStep(cb: (payload: { action: { risk: string; reasoning: string }; ok: boolean; message: string }) => void): void;
     onAutomationStop(cb: () => void): void;
     cancelAutomation(): void;
+    cancelTask(): void;
   };
   hotkey: {
     onPress(cb: () => void): void;
