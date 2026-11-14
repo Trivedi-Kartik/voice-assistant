@@ -31,20 +31,33 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateResult
   const existing = await db.refreshToken.findFirst({ where: { tokenHash } });
   if (!existing) return null;
 
-  if (existing.revokedAt || existing.replacedById || existing.expiresAt < new Date()) {
-    // Reuse of an already-rotated or revoked token: treat as compromise, kill the chain.
-    await db.refreshToken.updateMany({
+  const killChain = () =>
+    db.refreshToken.updateMany({
       where: { userId: existing.userId, deviceId: existing.deviceId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+  if (existing.revokedAt || existing.replacedById || existing.expiresAt < new Date()) {
+    // Reuse of an already-rotated or revoked token: treat as compromise, kill the chain.
+    await killChain();
+    return null;
+  }
+
+  // Claim the token with a conditional update BEFORE issuing its replacement. The old read-then-
+  // write let two concurrent refreshes with the same token both pass the check above and each
+  // mint a child, forking the chain and defeating theft detection. Only one caller can win this
+  // update; the loser is by definition presenting an already-used token.
+  const claimed = await db.refreshToken.updateMany({
+    where: { id: existing.id, revokedAt: null, replacedById: null },
+    data: { revokedAt: new Date() },
+  });
+  if (claimed.count !== 1) {
+    await killChain();
     return null;
   }
 
   const issued = await issueRefreshToken(existing.userId, existing.deviceId);
-  await db.refreshToken.update({
-    where: { id: existing.id },
-    data: { replacedById: issued.id, revokedAt: new Date() },
-  });
+  await db.refreshToken.update({ where: { id: existing.id }, data: { replacedById: issued.id } });
 
   return { userId: existing.userId, deviceId: existing.deviceId, issued };
 }

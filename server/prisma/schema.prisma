@@ -173,7 +173,7 @@ model Task {
   conversationId String    @map("conversation_id")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   goal           String?   @db.Text // the turn's transcript, best-effort — not guaranteed present
-  status         String    @default("running") // 'running' | 'completed' | 'paused' | 'failed'
+  status         String    @default("running") // 'running' | 'completed' | 'paused' | 'failed' | 'cancelled'
   startedAt      DateTime  @default(now()) @map("started_at")
   completedAt    DateTime? @map("completed_at")
 

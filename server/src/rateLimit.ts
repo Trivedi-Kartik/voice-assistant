@@ -26,10 +26,10 @@ export async function checkAndConsumeTurn(userId: string, hasByok: boolean): Pro
   if (hasByok) return { allowed: true, remaining: Infinity };
 
   const key = turnCounterKey(userId);
+  // Create-with-TTL first (NX = only if absent), then INCR. The old incr-then-expire pair was not
+  // atomic: a crash/disconnect between the two left a counter with no TTL, capping that user forever.
+  await redis.set(key, 0, "EX", 60 * 60 * 26, "NX"); // a little over a day, covers timezone slop
   const count = await redis.incr(key);
-  if (count === 1) {
-    await redis.expire(key, 60 * 60 * 26); // a little over a day, covers timezone slop
-  }
 
   if (count > env.dailyTurnCap) {
     return { allowed: false, remaining: 0 };

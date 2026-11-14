@@ -19,9 +19,13 @@ export async function issueWsTicket(payload: AccessTokenPayload): Promise<string
 
 // Single-use: consumes (deletes) the ticket on read so it can never be replayed.
 export async function consumeWsTicket(ticket: string): Promise<AccessTokenPayload | null> {
-  const key = ticketKey(ticket);
-  const raw = await redis.get(key);
+  // GETDEL is atomic: with get-then-del, two simultaneous upgrades presenting the same ticket could
+  // both read it before either deleted it, defeating the single-use guarantee.
+  const raw = await redis.getdel(ticketKey(ticket));
   if (!raw) return null;
-  await redis.del(key);
-  return JSON.parse(raw) as AccessTokenPayload;
+  try {
+    return JSON.parse(raw) as AccessTokenPayload;
+  } catch {
+    return null;
+  }
 }

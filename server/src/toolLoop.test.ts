@@ -39,6 +39,7 @@ function makeDeps(overrides: Partial<ToolLoopDeps> = {}): ToolLoopDeps & {
     dispatchToolCall: vi.fn().mockResolvedValue({ ok: true, message: "dispatched" }),
     handleServerTool: vi.fn().mockResolvedValue({ ok: true, message: "handled" }),
     speakAndEndTurn: vi.fn().mockResolvedValue(undefined),
+    isCancelled: () => false,
     recordTaskStep: (kind, toolName, result) => recordedSteps.push({ kind, toolName, result }),
     send: (msg) => sent.push(msg),
     sent,
@@ -103,5 +104,37 @@ describe("runToolLoop (standalone, no Session/WS)", () => {
     expect(result).toEqual({ outcome: "paused", pendingConfirmation: { name: "close_app", args: { app: "chrome" } } });
     expect(deps.dispatchToolCall).not.toHaveBeenCalled();
     expect(deps.speakAndEndTurn).toHaveBeenCalledWith("Close chrome? Say yes to confirm.");
+  });
+
+  it("stops after a cancellation arrives mid-flight, without taking another step", async () => {
+    vi.mocked(runLlmStep)
+      .mockResolvedValueOnce(llmToolCalls([{ id: "c1", name: "web_search", args: { query: "pizza" } }]))
+      .mockResolvedValueOnce(llmText("this should never be reached"));
+    let cancelled = false;
+    const deps = makeDeps({
+      // Simulates a task_cancel arriving over the WS while this tool call
+      // was still in flight — same real trigger as App.tsx's endSession()
+      // now calling window.jarvis.conversation.cancelTask().
+      dispatchToolCall: vi.fn().mockImplementation(async () => {
+        cancelled = true;
+        return { ok: true, message: "dispatched" };
+      }),
+      isCancelled: () => cancelled,
+    });
+
+    const result = await runToolLoop(deps);
+
+    expect(result).toEqual({ outcome: "cancelled" });
+    expect(vi.mocked(runLlmStep)).toHaveBeenCalledTimes(1); // never took a second step
+    expect(deps.speakAndEndTurn).not.toHaveBeenCalled(); // never asks a confirmation question after cancelling
+  });
+
+  it("never even makes the first LLM call if already cancelled", async () => {
+    const deps = makeDeps({ isCancelled: () => true });
+
+    const result = await runToolLoop(deps);
+
+    expect(result).toEqual({ outcome: "cancelled" });
+    expect(runLlmStep).not.toHaveBeenCalled();
   });
 });

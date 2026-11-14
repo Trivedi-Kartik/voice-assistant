@@ -6,8 +6,13 @@ import type { ServerMessage, ToolResult } from "../protocol.js";
 // had the trailing-punctuation bug), i18n/confirmationPrompts.ts,
 // i18n/messages.ts, i18n/languages.ts, tools/schemas.ts (CONFIRMATION_PROMPTS,
 // SERVER_TOOL_NAMES, AUTOMATION_TOOL_SCHEMAS — the actual gate logic under
-// test), tools/toolNames.ts, ws/userLock.ts (pure in-memory, no I/O).
-vi.mock("../stt.js", () => ({ transcribeAudio: vi.fn() }));
+// test), tools/toolNames.ts, ws/userLock.ts (pure in-memory, no I/O),
+// stt.js's isTrivialTranscript (pure string logic — the real gate under test
+// for the near-empty-transcript bug; only transcribeAudio itself is I/O).
+vi.mock("../stt.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../stt.js")>()),
+  transcribeAudio: vi.fn(),
+}));
 vi.mock("../llm.js", () => ({ runLlmStep: vi.fn() }));
 vi.mock("../groqKey.js", () => ({
   resolveGroqKey: vi.fn().mockResolvedValue({ apiKey: "test-key", isByok: false }),
@@ -157,6 +162,12 @@ function assistantTexts(msgs: ServerMessage[]): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // mockReset (not just clearAllMocks, which leaves queued mockResolvedValueOnce
+  // values intact) — a cancellation test deliberately leaves a queued LLM
+  // response unconsumed to prove the loop never makes that call; without this,
+  // that leftover value would silently leak into the next test's first call.
+  vi.mocked(runLlmStep).mockReset();
+  vi.mocked(transcribeAudio).mockReset();
   vi.mocked(checkAndConsumeTurn).mockResolvedValue({ allowed: true, remaining: 24 } as never);
   automationRunMock.mockReset();
 });
@@ -405,6 +416,35 @@ describe("cross-cutting turn guards", () => {
 
     expect(sent).toEqual([{ type: "error", code: "stt_failed", message: messages.sttEmptyError }]);
   });
+
+  // Real bug, found via live testing: Whisper hallucinating "." or a stray
+  // letter on near-silent audio (see stt.ts's isTrivialTranscript) was
+  // sailing through the old `if (!transcript)` check and starting a real
+  // turn. These pin the fix without re-testing isTrivialTranscript's own
+  // threshold logic (that's stt.ts's job) — just that Session actually uses it.
+  it.each([".", "I", "  . ", "!?"])(
+    "reports stt_failed (empty) for a non-empty but trivial transcript (%j)",
+    async (trivialTranscript) => {
+      const { session, sent } = await makeSession();
+      vi.mocked(transcribeAudio).mockResolvedValueOnce(trivialTranscript);
+
+      await session.handleMessage({ type: "audio_chunk", data: Buffer.from("audio").toString("base64") });
+      await session.handleMessage({ type: "audio_end" });
+
+      expect(sent).toEqual([{ type: "error", code: "stt_failed", message: messages.sttEmptyError }]);
+    }
+  );
+
+  it("still starts a real turn for a short-but-real transcript like 'Hi' or 'Ok'", async () => {
+    const { session, sent } = await makeSession();
+    vi.mocked(transcribeAudio).mockResolvedValueOnce("Hi");
+    vi.mocked(runLlmStep).mockResolvedValueOnce(llmText("Hello!"));
+
+    await session.handleMessage({ type: "audio_chunk", data: Buffer.from("audio").toString("base64") });
+    await session.handleMessage({ type: "audio_end" });
+
+    expect(sent[0]).toEqual({ type: "transcript", text: "Hi" });
+  });
 });
 
 // Phase 1 slice 2 (docs/IMPLEMENTATION_ROADMAP.md): "just start recording
@@ -452,5 +492,62 @@ describe("Phase 1 slice 2: task recording (no behavior change)", () => {
     await driveTurn(session, "hi karvix");
 
     expect(assistantTexts(sent)).toEqual(["Still works."]);
+  });
+});
+
+// Phase 1 slice 4 (docs/IMPLEMENTATION_ROADMAP.md): cooperative cancellation
+// and abandoned-task cleanup on disconnect. Fixes a real gap found while
+// designing this slice — agent/src/renderer/App.tsx's endSession() never told
+// the server anything, so pressing "stop" mid-turn didn't actually stop the
+// server from finishing the whole tool loop anyway.
+describe("Phase 1 slice 4: cancellation and disconnect cleanup", () => {
+  it("stops the turn when task_cancel arrives while a tool call is in flight, and marks the task cancelled", async () => {
+    const { session, sent } = await makeSession();
+    vi.mocked(runLlmStep)
+      .mockResolvedValueOnce(llmToolCalls([{ id: "c1", name: "web_search", args: { query: "pizza" } }]))
+      .mockResolvedValueOnce(llmText("this should never be reached"));
+    vi.mocked(transcribeAudio).mockResolvedValueOnce("search for pizza");
+
+    await session.handleMessage({ type: "audio_chunk", data: Buffer.from("audio").toString("base64") });
+    const turnPromise = session.handleMessage({ type: "audio_end" });
+    await vi.waitFor(() => {
+      if (!sent.some((m) => m.type === "tool_call")) throw new Error("tool_call not sent yet");
+    });
+    const call = sent.find((m) => m.type === "tool_call") as ToolCallMsg;
+
+    // Simulates the user pressing stop while the tool call was still
+    // in-flight — cancel arrives BEFORE the tool_result does.
+    await session.handleMessage({ type: "task_cancel" });
+    await session.handleMessage({ type: "tool_result", callId: call.callId, result: { ok: true, message: "done" } });
+    await turnPromise;
+
+    expect(vi.mocked(runLlmStep)).toHaveBeenCalledTimes(1); // never took a second step
+    expect(assistantTexts(sent)).toEqual([]); // never speaks after a cancel
+    expect(completeTask).toHaveBeenCalledWith("task-1", "cancelled");
+  });
+
+  it("marks an in-flight task failed if the connection drops before it completes", async () => {
+    const { session, sent } = await makeSession();
+    vi.mocked(runLlmStep).mockResolvedValueOnce(
+      llmToolCalls([{ id: "c1", name: "web_search", args: { query: "pizza" } }])
+    );
+    vi.mocked(transcribeAudio).mockResolvedValueOnce("search for pizza");
+
+    await session.handleMessage({ type: "audio_chunk", data: Buffer.from("audio").toString("base64") });
+    const turnPromise = session.handleMessage({ type: "audio_end" });
+    await vi.waitFor(() => {
+      if (!sent.some((m) => m.type === "tool_call")) throw new Error("tool_call not sent yet");
+    });
+
+    // The socket closes while dispatchToolCall is still waiting on a
+    // tool_result that will now never arrive.
+    session.handleDisconnect();
+
+    expect(completeTask).toHaveBeenCalledWith("task-1", "failed");
+
+    // Clean up the now-permanently-pending turn so this test doesn't leak a
+    // dangling timer/lock into later tests: handleDisconnect() already
+    // resolved the pending call with a device-disconnected result.
+    await turnPromise;
   });
 });

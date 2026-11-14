@@ -6,7 +6,7 @@ import { db } from "../db.js";
 // memory/conversationStore.ts's appendMessage — a write failure here must
 // never affect the live turn.
 
-export type TaskStatus = "completed" | "paused" | "failed";
+export type TaskStatus = "completed" | "paused" | "failed" | "cancelled";
 export type TaskStepKind = "tool_call" | "server_tool" | "automation" | "confirmation_gate" | "assistant_text";
 
 export interface TaskStepInput {

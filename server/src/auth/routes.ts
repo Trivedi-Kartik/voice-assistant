@@ -10,12 +10,17 @@ import { encryptApiKey } from "../crypto.js";
 import { env } from "../env.js";
 import { SUPPORTED_LANGUAGES } from "../i18n/languages.js";
 import { asyncHandler } from "../asyncHandler.js";
+import { loginLimiter, signupLimiter, refreshLimiter } from "./authRateLimit.js";
 
 export const authRouter = Router();
 
+// Cost 10 to match real hashes (signup) so the timing is indistinguishable.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("not-a-real-password", 10);
+
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  // bcrypt only uses the first 72 bytes, and an unbounded password is a free CPU-burn vector.
+  password: z.string().min(8).max(128),
   deviceId: z.string().uuid(),
   deviceName: z.string().min(1).max(100),
   platform: z.enum(["windows", "mac", "linux", "android", "ios"]),
@@ -23,7 +28,7 @@ const credentialsSchema = z.object({
   // LLM is offered for this connection (see tools/schemas.ts). Defaults to empty
   // (no tools) rather than erroring, so older/other clients degrade to chat-only
   // instead of failing to log in.
-  capabilities: z.array(z.string()).default([]),
+  capabilities: z.array(z.string().max(64)).max(32).default([]),
 });
 
 async function upsertDevice(
@@ -46,7 +51,7 @@ async function issueSessionTokens(userId: string, deviceId: string, language: st
   return { accessToken, refreshToken: refresh.raw, expiresIn: env.jwtAccessTtlSeconds, language };
 }
 
-authRouter.post("/signup", asyncHandler(async (req, res) => {
+authRouter.post("/signup", signupLimiter, asyncHandler(async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
@@ -72,7 +77,7 @@ authRouter.post("/signup", asyncHandler(async (req, res) => {
   res.status(201).json(await issueSessionTokens(user.id, deviceId, user.language));
 }));
 
-authRouter.post("/login", asyncHandler(async (req, res) => {
+authRouter.post("/login", loginLimiter, asyncHandler(async (req, res) => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request", details: parsed.error.flatten() });
@@ -81,7 +86,10 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
   const { email, password, deviceId, deviceName, platform, capabilities } = parsed.data;
 
   const user = await db.user.findUnique({ where: { email } });
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  // Always run a bcrypt compare, even for an unknown email: skipping it made "no such account"
+  // measurably faster than "wrong password", letting an attacker enumerate registered emails.
+  const passwordOk = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  if (!user || !passwordOk) {
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
@@ -90,7 +98,7 @@ authRouter.post("/login", asyncHandler(async (req, res) => {
   res.json(await issueSessionTokens(user.id, deviceId, user.language));
 }));
 
-authRouter.post("/refresh", asyncHandler(async (req, res) => {
+authRouter.post("/refresh", refreshLimiter, asyncHandler(async (req, res) => {
   const parsed = z.object({ refreshToken: z.string() }).safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request" });

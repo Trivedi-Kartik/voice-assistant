@@ -10,7 +10,8 @@ export type ClientMessage =
   | { type: "resume"; conversationId: string }
   | { type: "automation_observation"; taskId: string; stepIndex: number; screenshot: string }
   | { type: "automation_action_result"; taskId: string; stepIndex: number; result: ToolResult }
-  | { type: "automation_cancel"; taskId: string };
+  | { type: "automation_cancel"; taskId: string }
+  | { type: "task_cancel" };
 
 export type ServerMessage =
   | { type: "auth_ok" }

@@ -43,3 +43,22 @@ export async function transcribeAudio(apiKey: string, audioBuffer: Buffer, langu
     }
   }
 }
+
+// Real bug, found via live testing: a near-silent recording (background
+// noise/room hum briefly crossing the client's RMS-based "arm" threshold in
+// silenceDetector.ts) reaches Whisper as a short, mostly-empty clip, and
+// Whisper hallucinates a token instead of returning "" — observed live as
+// transcripts of exactly "." or a single stray letter. ws/session.ts's
+// existing `if (!transcript)` guard only catches a literal empty string, so
+// these non-empty-but-content-free results were sailing through and starting
+// a real turn. This is the same check applied to those results: strip
+// everything but letters/digits and require at least 2 remaining — high
+// enough to drop "." and single letters, low enough to never reject a real
+// short reply like "Yes"/"No"/"Ok" (the confirmation-flow resolutions in
+// ws/session.ts route through this exact same transcript path).
+const MIN_TRANSCRIPT_ALNUM_CHARS = 2;
+
+export function isTrivialTranscript(transcript: string): boolean {
+  const alnumOnly = transcript.replace(/[^\p{L}\p{N}]/gu, "");
+  return alnumOnly.length < MIN_TRANSCRIPT_ALNUM_CHARS;
+}

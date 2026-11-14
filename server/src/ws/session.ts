@@ -1,9 +1,12 @@
 import type { WebSocket } from "ws";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import type { ClientMessage, ServerMessage, ToolResult } from "../protocol.js";
 import type { ChatMessage } from "../llm.js";
-import { transcribeAudio } from "../stt.js";
+import { transcribeAudio, isTrivialTranscript } from "../stt.js";
 import { isGroqRateLimit, isRetryableToolUseFailure, getRetryAfterSeconds, formatWaitTime } from "../groqErrors.js";
 import { SERVER_TOOL_NAMES } from "../tools/schemas.js";
 import { AutomationRunner, type AutomationOutcome } from "../automation/runner.js";
@@ -18,6 +21,7 @@ import { db } from "../db.js";
 import { tryAcquireUserLock, releaseUserLock } from "./userLock.js";
 import { createConversation, appendMessage } from "../memory/conversationStore.js";
 import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../memory/memoryStore.js";
+import { trimHistory } from "./historyTrim.js";
 import { createTask, appendTaskStep, completeTask, type TaskStatus, type TaskStepKind } from "../tasks/taskStore.js";
 
 // The rename to "Karvix" (see docs/CHANGELOG.md) only ever touched branding
@@ -76,6 +80,9 @@ function rateLimitMessage(err: unknown, language: string): string {
     : messages.rateLimitedGeneric;
 }
 
+// ~10 MB of webm/opus is many minutes of speech; anything beyond is a bug or abuse, not an utterance.
+const MAX_UTTERANCE_BYTES = 10 * 1024 * 1024;
+
 const TOOL_TIMEOUT_MS = 12_000;
 // Mirrors the same override on the client (agent/src/main/tools/index.ts) —
 // add_custom_app blocks on a human browsing a file dialog, so the server
@@ -103,6 +110,10 @@ interface PendingCall {
 export class Session {
   conversationId: string;
   private audioChunks: Buffer[] = [];
+  // A client can stream audio_chunk frames without ever sending audio_end; without a cap that
+  // grows the heap until the whole process is OOM-killed (taking every user down with it).
+  private audioBytes = 0;
+  private audioOverflow = false;
   private readonly pendingCalls = new Map<string, PendingCall>();
   private history: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
   // Set when a turn pauses on a tool in CONFIRMATION_PROMPTS — the *next*
@@ -118,6 +129,14 @@ export class Session {
   private activeAutomation?: AutomationRunner;
   private pendingAutomationConfirm = false;
   private pendingAutomationConfirmText?: string;
+  // Phase 1 slice 4: cooperative cancellation for the in-flight turn (see
+  // ../toolLoop.ts's isCancelled check) — reset at the start of every
+  // runTurn(). currentTaskId mirrors the Task created for whichever turn is
+  // currently running, purely so handleDisconnect() (a different method than
+  // runTurn(), which owns the real local `taskId`) can mark it abandoned if
+  // the socket closes mid-turn — see handleDisconnect() below.
+  private cancelRequested = false;
+  private currentTaskId?: string;
 
   private constructor(
     private readonly ws: WebSocket,
@@ -158,10 +177,26 @@ export class Session {
 
   async handleMessage(msg: ClientMessage): Promise<void> {
     switch (msg.type) {
-      case "audio_chunk":
-        this.audioChunks.push(Buffer.from(msg.data, "base64"));
+      case "audio_chunk": {
+        if (this.audioOverflow) return;
+        const chunk = Buffer.from(msg.data, "base64");
+        this.audioBytes += chunk.length;
+        if (this.audioBytes > MAX_UTTERANCE_BYTES) {
+          this.audioOverflow = true;
+          this.audioChunks = [];
+          return;
+        }
+        this.audioChunks.push(chunk);
         return;
+      }
       case "audio_end":
+        if (this.audioOverflow) {
+          this.audioOverflow = false;
+          this.audioBytes = 0;
+          this.audioChunks = [];
+          this.send({ type: "error", code: "stt_failed", message: getMessages(this.language).sttUnclearError });
+          return;
+        }
         await this.runTurn();
         return;
       case "tool_result":
@@ -181,6 +216,9 @@ export class Session {
       case "automation_cancel":
         this.activeAutomation?.handleCancel(msg.taskId);
         return;
+      case "task_cancel":
+        this.cancelRequested = true;
+        return;
     }
   }
 
@@ -193,6 +231,16 @@ export class Session {
   // Called when the socket closes with tool calls still outstanding — resolves
   // them so nothing waits on a promise nobody will ever fulfill.
   handleDisconnect(): void {
+    // The client is gone: stop the in-flight loop at its next safe point instead of letting it
+    // burn LLM calls and wait out a full tool timeout per step, and free any automation wait so
+    // runTurn() can finish and release the user's turn lock.
+    this.cancelRequested = true;
+    this.activeAutomation?.abort("disconnected");
+    this.activeAutomation = undefined;
+    this.pendingAutomationConfirm = false;
+    this.pendingAutomationConfirmText = undefined;
+    this.pendingConfirmation = undefined;
+
     for (const pending of this.pendingCalls.values()) {
       clearTimeout(pending.timer);
       pending.resolve({ ok: false, message: getMessages(this.language).deviceDisconnected });
@@ -201,6 +249,17 @@ export class Session {
         .catch(() => {});
     }
     this.pendingCalls.clear();
+
+    // Phase 1 slice 4, "resume" scope: without this, a Task whose turn never
+    // reached a completeTask() call before the socket closed would sit at
+    // status:"running" in the database forever, misleadingly implying it's
+    // still active. This does NOT replay/resume the turn itself — that needs
+    // real checkpointing this repo doesn't have yet, not invented here.
+    if (this.currentTaskId) {
+      const taskId = this.currentTaskId;
+      this.currentTaskId = undefined;
+      void completeTask(taskId, "failed").catch((err) => console.error("[session] completeTask failed", err));
+    }
   }
 
   private resolveToolCall(callId: string, result: ToolResult): void {
@@ -218,8 +277,11 @@ export class Session {
   private async runTurn(): Promise<void> {
     const audio = Buffer.concat(this.audioChunks);
     this.audioChunks = [];
+    this.audioBytes = 0;
     if (audio.length === 0) return;
 
+    this.cancelRequested = false;
+    this.history = trimHistory(this.history);
     const messages = getMessages(this.language);
     // Phase 1 slice 2: one Task per runTurn() call, created once a real
     // transcript exists (nothing worth recording before that). Declared here,
@@ -277,6 +339,18 @@ export class Session {
           `[session] transcription failed — audio buffer: ${audio.length} bytes, first 8 bytes: ${audio.subarray(0, 8).toString("hex")}`
         );
         console.error("[session] transcription failed", err);
+        // Temporary debug aid (local dev only — gated behind an explicit env
+        // var so this can never accidentally run anywhere else): saves the
+        // exact rejected buffer to disk so it can be inspected directly
+        // (e.g. `ffprobe`/a hex editor) instead of guessing from an 8-byte
+        // prefix. Set DEBUG_DUMP_FAILED_AUDIO=1 to enable. Remove once the
+        // "could not process file" cause is confirmed.
+        if (process.env.DEBUG_DUMP_FAILED_AUDIO === "1") {
+          const dumpPath = path.join(os.tmpdir(), `karvix-failed-audio-${Date.now()}.webm`);
+          fs.writeFile(dumpPath, audio)
+            .then(() => console.error(`[session] dumped failed audio buffer to ${dumpPath}`))
+            .catch((writeErr) => console.error("[session] failed to dump audio buffer", writeErr));
+        }
         this.send({
           type: "error",
           code: "stt_failed",
@@ -287,8 +361,11 @@ export class Session {
 
       // Silence, background noise, or an utterance too short/unclear for Whisper
       // to transcribe anything — don't waste an LLM call (and the user's daily
-      // turn) on empty input; just ask them to repeat.
-      if (!transcript) {
+      // turn) on empty input; just ask them to repeat. isTrivialTranscript
+      // also catches the non-empty-but-content-free case (Whisper
+      // hallucinating "." or a stray letter on near-silent audio) that a
+      // plain `!transcript` check misses — see stt.ts.
+      if (!transcript || isTrivialTranscript(transcript)) {
         this.send({ type: "error", code: "stt_failed", message: messages.sttEmptyError });
         return;
       }
@@ -306,6 +383,7 @@ export class Session {
         console.error("[session] createTask failed", err);
         return undefined;
       });
+      this.currentTaskId = taskId;
 
       // This turn's transcript is the answer to a question asked last turn,
       // not a new request — resolve it before anything else.
@@ -349,6 +427,7 @@ export class Session {
           if (this.pendingAutomationConfirm) {
             await this.speakAndEndTurn(this.pendingAutomationConfirmText!);
             if (taskId) void completeTask(taskId, "paused").catch((err) => console.error("[session] completeTask failed", err));
+            this.currentTaskId = undefined;
             await this.finishTurnEarly();
             return;
           }
@@ -381,6 +460,7 @@ export class Session {
         if (this.pendingAutomationConfirm) {
           await this.speakAndEndTurn(this.pendingAutomationConfirmText!);
           if (taskId) void completeTask(taskId, "paused").catch((err) => console.error("[session] completeTask failed", err));
+          this.currentTaskId = undefined;
           await this.finishTurnEarly();
           return;
         }
@@ -409,11 +489,14 @@ export class Session {
         speakAndEndTurn: (text) => this.speakAndEndTurn(text),
         recordTaskStep,
         send: (msg) => this.send(msg),
+        isCancelled: () => this.cancelRequested,
       });
       this.pendingConfirmation = loopResult.pendingConfirmation;
-      taskFinalStatus = loopResult.outcome === "paused" ? "paused" : "completed";
+      taskFinalStatus =
+        loopResult.outcome === "paused" ? "paused" : loopResult.outcome === "cancelled" ? "cancelled" : "completed";
 
       if (taskId) void completeTask(taskId, taskFinalStatus).catch((err) => console.error("[session] completeTask failed", err));
+      this.currentTaskId = undefined;
       await this.finishTurnEarly();
     } catch (err) {
       // Both checks catch the exhausted-retries case too (see llm.ts) — these
@@ -428,6 +511,7 @@ export class Session {
       this.send({ type: "error", code: "llm_failed", message });
       console.error("[session] turn failed", err);
       if (taskId) void completeTask(taskId, "failed").catch((e) => console.error("[session] completeTask failed", e));
+      this.currentTaskId = undefined;
     } finally {
       releaseUserLock(this.userId);
     }
@@ -508,6 +592,10 @@ export class Session {
   }
 
   private dispatchToolCall(callId: string, name: string, args: unknown): Promise<ToolResult> {
+    // No point waiting out a full tool timeout for a client that already disconnected.
+    if (this.ws.readyState !== this.ws.OPEN) {
+      return Promise.resolve({ ok: false, message: getMessages(this.language).deviceDisconnected });
+    }
     return db.toolInvocation
       .create({ data: { userId: this.userId, deviceId: this.deviceId, toolName: name, args: args as object, status: "pending" } })
       .then(
@@ -525,19 +613,27 @@ export class Session {
               timer,
               invocationId: invocation.id,
               resolve: (result) => {
+                // Resolve first: nothing after this may throw before the waiting turn is released.
+                resolve(result);
                 db.toolInvocation
                   .update({
                     where: { id: invocation.id },
                     data: { status: result.ok ? "success" : "error", result: result as object, completedAt: new Date() },
                   })
                   .catch(() => {});
-                resolve(result);
               },
             });
 
             this.send({ type: "tool_call", callId, name, args });
           })
-      );
+      )
+      // A DB hiccup creating the audit row used to reject here, leaving the assistant message with
+      // unanswered tool_calls in history — which the LLM API rejects on every following turn of the
+      // connection. Always answer the call.
+      .catch((err) => {
+        console.error("[session] dispatchToolCall failed", err);
+        return { ok: false, message: getMessages(this.language).turnFailedGeneric };
+      });
   }
 
   private async persist(): Promise<void> {

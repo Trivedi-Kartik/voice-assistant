@@ -77,10 +77,16 @@ export interface ToolLoopDeps {
   speakAndEndTurn(text: string): Promise<void>;
   recordTaskStep(kind: TaskStepKind, toolName?: string, result?: ToolResult): void;
   send(msg: ServerMessage): void;
+  // Phase 1 slice 4: cooperative cancellation, checked at safe points between
+  // steps — never aborts an in-flight Groq call or a pending client tool
+  // round-trip mid-flight (that would need a real AbortSignal threaded all
+  // the way through, a bigger change than this slice's scope). A call already
+  // in progress finishes; the loop just won't take another step afterward.
+  isCancelled(): boolean;
 }
 
 export interface ToolLoopResult {
-  outcome: "completed" | "paused";
+  outcome: "completed" | "paused" | "cancelled";
   // Only set when outcome is "paused" via the generic confirmation gate — the
   // caller (Session) is responsible for storing this as its own cross-turn
   // pendingConfirmation state; this function has no notion of "next turn."
@@ -93,6 +99,8 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
   let pendingConfirmation: { name: string; args: unknown } | undefined;
 
   for (let step = 0; step < MAX_TOOL_LOOP_STEPS; step++) {
+    if (deps.isCancelled()) return { outcome: "cancelled" };
+
     let assistantMessage, toolCalls;
     for (let leakAttempt = 0; ; leakAttempt++) {
       ({ assistantMessage, toolCalls } = await runLlmStep(deps.apiKey, deps.history, tools));
@@ -139,6 +147,12 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
       deps.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
       deps.recordTaskStep(SERVER_TOOL_NAMES.has(call.name) ? "server_tool" : "tool_call", call.name, result);
     }
+
+    // Checked again here, not just at the top of the loop: a cancel could
+    // have arrived while one of the calls above was still in flight. Takes
+    // priority over speaking a confirmation question — if the user already
+    // asked to stop, don't ask them something new.
+    if (deps.isCancelled()) return { outcome: "cancelled" };
 
     if (awaitingConfirmation) {
       // Deterministic, not model-generated — reliable and free (no extra

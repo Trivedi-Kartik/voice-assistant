@@ -5,6 +5,11 @@ import { db } from "../db.js";
 
 const MAX_STEPS = 15; // hard cap — a misdecided loop can't run forever, mirrors MAX_TOOL_LOOP_STEPS in ws/session.ts
 const TASK_TIMEOUT_MS = 3 * 60 * 1000; // wall-clock cap, independent of step count
+// Per-wait caps. The wall-clock cap above is only checked between steps, so without these a
+// device that crashes/disconnects/stops answering would leave runTurn() awaiting forever —
+// holding the per-user turn lock (every later turn: "turn in progress") until a server restart.
+export const OBSERVATION_TIMEOUT_MS = 45_000; // client captures + uploads a screenshot
+export const ACTION_RESULT_TIMEOUT_MS = 30_000; // client performs one click/type/key/scroll
 
 export type AutomationOutcome =
   | { kind: "done"; summary: string }
@@ -24,6 +29,9 @@ export class AutomationRunner {
   private readonly history: AutomationHistoryEntry[] = [];
   private pendingAction?: AutomationAction;
   private cancelled = false;
+  // Set when the task is ended by something other than the user saying stop (the device went
+  // away or stopped responding) — only changes the spoken summary.
+  private abortReason?: "disconnected" | "unresponsive";
   private waitObservation?: (screenshot: string) => void;
   private waitActionResult?: (result: { ok: boolean; message: string }) => void;
 
@@ -55,16 +63,46 @@ export class AutomationRunner {
     this.cancelled = true;
   }
 
+  // Ends the task from the server side (device disconnected) and releases whatever the loop is
+  // currently waiting on, so the awaiting runTurn() can finish and free the user's turn lock.
+  abort(reason: "disconnected" | "unresponsive" = "disconnected"): void {
+    this.cancelled = true;
+    this.abortReason ??= reason;
+    this.waitObservation?.("");
+    this.waitObservation = undefined;
+    this.waitActionResult?.({ ok: false, message: "device unavailable" });
+    this.waitActionResult = undefined;
+  }
+
   private nextObservation(): Promise<string> {
     return new Promise((resolve) => {
-      this.waitObservation = resolve;
+      const timer = setTimeout(() => this.abort("unresponsive"), OBSERVATION_TIMEOUT_MS);
+      this.waitObservation = (screenshot) => {
+        clearTimeout(timer);
+        resolve(screenshot);
+      };
     });
   }
 
   private nextActionResult(): Promise<{ ok: boolean; message: string }> {
     return new Promise((resolve) => {
-      this.waitActionResult = resolve;
+      const timer = setTimeout(() => this.abort("unresponsive"), ACTION_RESULT_TIMEOUT_MS);
+      this.waitActionResult = (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      };
     });
+  }
+
+  private stoppedOutcome(): AutomationOutcome {
+    this.send({ type: "automation_stop", taskId: this.id });
+    const summary =
+      this.abortReason === "disconnected"
+        ? "Stopped — the connection to your device was lost."
+        : this.abortReason === "unresponsive"
+          ? "Stopped — your device stopped responding."
+          : "Stopped by the user.";
+    return { kind: "done", summary };
   }
 
   // "start": first call, right after the user confirmed launching automation.
@@ -93,10 +131,7 @@ export class AutomationRunner {
 
   private async loop(screenshot: string): Promise<AutomationOutcome> {
     for (; this.stepIndex < MAX_STEPS; this.stepIndex++) {
-      if (this.cancelled) {
-        this.send({ type: "automation_stop", taskId: this.id });
-        return { kind: "done", summary: "Stopped by the user." };
-      }
+      if (this.cancelled) return this.stoppedOutcome();
       if (Date.now() - this.startedAt > TASK_TIMEOUT_MS) {
         this.send({ type: "automation_stop", taskId: this.id });
         return { kind: "done", summary: "Stopped — this was taking too long." };
@@ -129,12 +164,11 @@ export class AutomationRunner {
   private async executeAndRecord(action: AutomationAction): Promise<AutomationOutcome | undefined> {
     this.send({ type: "automation_action", taskId: this.id, stepIndex: this.stepIndex, action });
     const result = await this.nextActionResult();
+    // Aborted (device gone / unresponsive): the step may never have executed — don't record it as one.
+    if (this.abortReason) return this.stoppedOutcome();
     this.history.push({ action, result });
     await this.persistStep(action, result);
-    if (this.cancelled) {
-      this.send({ type: "automation_stop", taskId: this.id });
-      return { kind: "done", summary: "Stopped by the user." };
-    }
+    if (this.cancelled) return this.stoppedOutcome();
     return undefined;
   }
 
