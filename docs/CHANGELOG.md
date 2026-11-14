@@ -4,6 +4,29 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-14 — Karvix 2 plan approved; Phase 0: natural voice (Google Chirp 3 HD)
+
+`docs/PC_CONTROL_PLAN.md` (full PC control by voice) was approved with these decisions: Groq stays the
+default model and never switches automatically (users may add their own keys for other providers);
+voice = Google Chirp 3 HD; Windows and Linux built together; Phase 0 then Phase 1.
+
+Phase 0 — the robotic voice (espeak on Linux, browser voice on Windows) is replaced by server-side
+neural speech, streamed sentence by sentence:
+- Server: `tts/` (sentence chunker incl. Hindi danda and unpunctuated Thai, Google Chirp 3 HD REST client,
+  `SpeechService` with in-order streaming, prefetch, phrase cache, monthly character budget kept under the
+  1M free tier, and per-chunk fallback). Every spoken reply now goes through one `Session.speak()`.
+- Protocol (both packages): `client_hello {features}` (new clients opt in; old installed builds never send
+  it and behave exactly as before), `assistant_text.audioFollows/replyId`, `assistant_audio` now
+  `{replyId, seq, final, text, data?, mimeType?}`. Each chunk carries its text, so a missing/failed chunk is
+  spoken with the local voice and the user always hears the whole reply.
+- Client: `renderer/audio/speechQueue.ts` plays chunks in order via Web Audio (works under the strict CSP),
+  local-voice fallback per chunk or for the whole reply if no audio arrives within 4s, and discards late
+  chunks of a reply the user stopped.
+
+Verified: server 80 tests passing (new TTS tests); agent typechecks; the speech queue was exercised in
+headless Chrome with real decoded audio (ordering, fallback, timeout, stop). **Not yet verified with a real
+Google API key** (none configured yet) or inside the Electron app. Needs `GOOGLE_TTS_API_KEY` on the server.
+
 ## 2026-11-14 — MIT license and automatic desktop installer builds
 
 Added `LICENSE` (MIT, © 2026 Kartik Trivedi) and `"license": "MIT"` in both `package.json` files.

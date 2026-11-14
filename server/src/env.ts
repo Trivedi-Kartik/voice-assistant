@@ -30,4 +30,9 @@ export const env = {
   // that should stop the server from starting for local dev or if it's
   // simply not configured yet. See index.ts.
   sentryDsn: process.env.SENTRY_DSN,
+  // Optional: natural server-side voice (Google Chirp 3 HD). Unset = clients use their local voice.
+  googleTtsApiKey: process.env.GOOGLE_TTS_API_KEY || undefined,
+  ttsVoice: process.env.TTS_VOICE || "Aoede",
+  // Keep under Google's free 1M characters/month by default; beyond it, clients fall back to local voice.
+  ttsMonthlyCharCap: numberEnv("TTS_MONTHLY_CHAR_CAP", 900_000),
 };

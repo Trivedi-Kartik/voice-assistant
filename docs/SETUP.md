@@ -27,6 +27,7 @@ JWT_SECRET=some_long_random_string  # generate a real one, see below — never r
 BYOK_ENCRYPTION_KEY=            # base64-encoded 32 random bytes, see below
 DAILY_TURN_CAP=25
 SENTRY_DSN=                     # optional — error monitoring, free tier at sentry.io; leave blank to skip
+GOOGLE_TTS_API_KEY=             # optional — natural voice (Google Chirp 3 HD); blank = local voice. See docs/PC_CONTROL_PLAN.md §4
 ```
 
 Generate `JWT_SECRET` (any long random string works — this is one easy way):

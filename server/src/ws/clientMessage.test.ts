@@ -8,6 +8,7 @@ describe("parseClientMessage", () => {
     expect(p({ type: "audio_chunk", data: "AAAA" })).toEqual({ type: "audio_chunk", data: "AAAA" });
     expect(p({ type: "audio_end" })).toEqual({ type: "audio_end" });
     expect(p({ type: "task_cancel" })).toEqual({ type: "task_cancel" });
+    expect(p({ type: "client_hello", features: ["assistant_audio"] })).toEqual({ type: "client_hello", features: ["assistant_audio"] });
     expect(p({ type: "tool_result", callId: "c1", result: { ok: true, message: "hi" } })).not.toBeNull();
     expect(p({ type: "resume", conversationId: "abc" })).not.toBeNull();
     expect(p({ type: "automation_cancel", taskId: "t" })).not.toBeNull();

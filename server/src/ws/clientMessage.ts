@@ -39,6 +39,7 @@ const clientMessage = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("automation_cancel"), taskId: id }),
   z.object({ type: z.literal("task_cancel") }),
+  z.object({ type: z.literal("client_hello"), features: z.array(z.string().max(64)).max(32) }),
 ]);
 
 // Returns null for anything that isn't valid JSON or isn't a well-formed ClientMessage.

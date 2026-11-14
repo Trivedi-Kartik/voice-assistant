@@ -22,6 +22,7 @@ import { tryAcquireUserLock, releaseUserLock } from "./userLock.js";
 import { createConversation, appendMessage } from "../memory/conversationStore.js";
 import { saveMemoryFact, findRelevantMemories, type RelevantMemory } from "../memory/memoryStore.js";
 import { trimHistory } from "./historyTrim.js";
+import { speech } from "../tts/index.js";
 import { createTask, appendTaskStep, completeTask, type TaskStatus, type TaskStepKind } from "../tasks/taskStore.js";
 
 // The rename to "Karvix" (see docs/CHANGELOG.md) only ever touched branding
@@ -114,6 +115,8 @@ export class Session {
   // grows the heap until the whole process is OOM-killed (taking every user down with it).
   private audioBytes = 0;
   private audioOverflow = false;
+  // Set by client_hello: this client build can play server-synthesized speech.
+  private supportsServerAudio = false;
   private readonly pendingCalls = new Map<string, PendingCall>();
   private history: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
   // Set when a turn pauses on a tool in CONFIRMATION_PROMPTS — the *next*
@@ -219,6 +222,9 @@ export class Session {
       case "task_cancel":
         this.cancelRequested = true;
         return;
+      case "client_hello":
+        this.supportsServerAudio = msg.features.includes("assistant_audio");
+        return;
     }
   }
 
@@ -268,6 +274,19 @@ export class Session {
     clearTimeout(pending.timer);
     this.pendingCalls.delete(callId);
     pending.resolve(result);
+  }
+
+  // The single path every spoken reply takes: text first (shown immediately), then — for clients that
+  // support it and when TTS is configured — natural-voice audio chunks streamed in order.
+  private speak(text: string): void {
+    const withAudio = this.supportsServerAudio && speech.enabled;
+    // replyId ties the audio chunks to this reply, so late chunks from a reply the user stopped can never
+    // be played as the start of the next one.
+    const replyId = uuid();
+    this.send({ type: "assistant_text", text, ...(withAudio ? { audioFollows: true, replyId } : {}) });
+    if (withAudio) {
+      void speech.stream(text, this.language, replyId, (m) => this.send(m)).catch((err) => console.error("[tts] stream failed", err));
+    }
   }
 
   private send(msg: ServerMessage): void {
@@ -488,7 +507,7 @@ export class Session {
         handleServerTool: (name, args, sourceMessageId) => this.handleServerTool(name, args, sourceMessageId),
         speakAndEndTurn: (text) => this.speakAndEndTurn(text),
         recordTaskStep,
-        send: (msg) => this.send(msg),
+        send: (msg) => (msg.type === "assistant_text" ? this.speak(msg.text) : this.send(msg)),
         isCancelled: () => this.cancelRequested,
       });
       this.pendingConfirmation = loopResult.pendingConfirmation;
@@ -523,7 +542,7 @@ export class Session {
   // let the turn end there rather than letting the main LLM chat over it.
   private async speakAndEndTurn(text: string): Promise<void> {
     this.history.push({ role: "assistant", content: text });
-    this.send({ type: "assistant_text", text });
+    this.speak(text);
     await appendMessage(this.conversationId, "assistant", text).catch((err) =>
       console.error("[session] appendMessage(assistant) failed", err)
     );

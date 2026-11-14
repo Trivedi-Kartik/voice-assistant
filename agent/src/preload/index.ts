@@ -42,8 +42,15 @@ contextBridge.exposeInMainWorld("jarvis", {
     onTranscript: (cb: (text: string) => void) => {
       ipcRenderer.on("conversation:transcript", (_e, text) => cb(text));
     },
-    onAssistantText: (cb: (text: string) => void) => {
-      ipcRenderer.on("conversation:assistantText", (_e, text) => cb(text));
+    onAssistantText: (cb: (text: string, audioFollows: boolean, replyId?: string) => void) => {
+      ipcRenderer.on("conversation:assistantText", (_e, text, audioFollows, replyId) =>
+        cb(text, audioFollows === true, typeof replyId === "string" ? replyId : undefined)
+      );
+    },
+    onAssistantAudio: (
+      cb: (chunk: { replyId: string; seq: number; final: boolean; text: string; data?: string; mimeType?: string }) => void
+    ) => {
+      ipcRenderer.on("conversation:assistantAudio", (_e, chunk) => cb(chunk));
     },
     onError: (cb: (payload: { code: string; message: string }) => void) => {
       ipcRenderer.on("conversation:error", (_e, payload) => cb(payload));

@@ -28,16 +28,26 @@ let conversationActive = false;
 function handleServerMessage(msg: ServerMessage): void {
   switch (msg.type) {
     case "auth_ok":
+      // Tell the server this build can play natural-voice audio (older builds never send this).
+      connection.send({ type: "client_hello", features: ["assistant_audio"] });
       return;
     case "transcript":
       win.webContents.send("conversation:transcript", msg.text);
       return;
     case "assistant_text":
       conversationActive = false;
-      win.webContents.send("conversation:assistantText", msg.text);
+      win.webContents.send("conversation:assistantText", msg.text, msg.audioFollows === true, msg.replyId);
       return;
     case "assistant_audio":
-      return; // reserved for v2 TTS upgrade — v1 client doesn't advertise support
+      win.webContents.send("conversation:assistantAudio", {
+        replyId: msg.replyId,
+        seq: msg.seq,
+        final: msg.final,
+        text: msg.text,
+        data: msg.data,
+        mimeType: msg.mimeType,
+      });
+      return;
     case "tool_call": {
       dispatchToolCall(msg.name, msg.args)
         .then((result) => {

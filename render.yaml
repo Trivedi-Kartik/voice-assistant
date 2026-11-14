@@ -38,3 +38,6 @@ services:
         sync: false
       - key: SENTRY_DSN
         sync: false
+      # Optional natural voice (Google Chirp 3 HD). Unset = clients use their local voice.
+      - key: GOOGLE_TTS_API_KEY
+        sync: false

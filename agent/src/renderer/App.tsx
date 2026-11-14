@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "./state/store";
 import { MicCapture, isMicPermissionGranted } from "./audio/micCapture";
 import { createTtsEngine } from "./audio/ttsPlayback";
+import { SpeechQueue } from "./audio/speechQueue";
 import { SilenceDetector } from "./audio/silenceDetector";
 import { ConsentScreen } from "./components/ConsentScreen";
 import { LoginScreen } from "./components/LoginScreen";
@@ -59,6 +60,8 @@ export function App() {
 
   const micCapture = useRef(new MicCapture());
   const ttsEngine = useRef(createTtsEngine());
+  // Natural server voice (Google), falling back to the local engine per chunk.
+  const speechQueue = useRef(new SpeechQueue(ttsEngine.current));
   const silenceDetector = useRef(new SilenceDetector());
   // Whether a session is currently in flight — guards the race where the
   // user (or a connection/error event) ends the session while a reply is
@@ -138,6 +141,7 @@ export function App() {
     silenceDetector.current.stop();
     micCapture.current.stop();
     ttsEngine.current.stop();
+    speechQueue.current.stop();
     window.jarvis.conversation.cancelTask();
     setMicState("idle");
     setCurrentStepLabel(undefined);
@@ -218,19 +222,25 @@ export function App() {
       }
     });
 
-    window.jarvis.conversation.onAssistantText((text) => {
+    window.jarvis.conversation.onAssistantAudio((chunk) => speechQueue.current.push(chunk));
+
+    window.jarvis.conversation.onAssistantText((text, audioFollows, replyId) => {
       pushTurn({ role: "assistant", text });
       setCurrentStepLabel(undefined);
       // A reply that was already in flight when the user pressed stop is still shown, but not spoken
       // (and doesn't flip the orb to "speaking" after the user ended the session).
       if (!sessionActive.current) {
+        if (replyId) speechQueue.current.discard(replyId);
         setMicState("idle");
         window.jarvis.conversation.setActive(false);
         return;
       }
       setMicState("speaking");
       const generation = sessionGeneration.current;
-      ttsEngine.current.speak(text, useAppStore.getState().language).then(() => {
+      const language = useAppStore.getState().language;
+      const playback =
+        audioFollows && replyId ? speechQueue.current.speak(text, language, replyId) : ttsEngine.current.speak(text, language);
+      playback.then(() => {
         if (generation !== sessionGeneration.current) return; // belongs to a session that has since ended
         // Guards the race where the user manually ended the session (or it
         // was ended by a connection/error event) while this reply was still

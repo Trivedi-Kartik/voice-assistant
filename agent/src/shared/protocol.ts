@@ -13,14 +13,21 @@ export type ClientMessage =
   | { type: "automation_cancel"; taskId: string }
   // Cancels the current in-flight turn's tool-calling loop (not automation-
   // specific) — see server/src/toolLoop.ts's cooperative cancellation check.
-  | { type: "task_cancel" };
+  | { type: "task_cancel" }
+  // Sent once after auth_ok to say which optional features this client build supports. Older clients
+  // never send it, so the server keeps behaving exactly as before for them (e.g. no audio).
+  | { type: "client_hello"; features: string[] };
 
 export type ServerMessage =
   | { type: "auth_ok" }
   | { type: "transcript"; text: string }
   | { type: "tool_call"; callId: string; name: string; args: unknown }
-  | { type: "assistant_text"; text: string }
-  | { type: "assistant_audio"; data: string; mimeType: string } // reserved, unused in v1 (browser SpeechSynthesis)
+  // audioFollows: assistant_audio chunks for this reply will follow (client should play those instead
+  // of its local voice).
+  | { type: "assistant_text"; text: string; audioFollows?: boolean; replyId?: string }
+  // One speech chunk (≈ a sentence) of the reply, in order. `data` (base64 audio) is omitted when the
+  // server couldn't synthesize it — the client then speaks `text` with its local voice.
+  | { type: "assistant_audio"; replyId: string; seq: number; final: boolean; text: string; data?: string; mimeType?: string }
   | { type: "error"; code: ErrorCode; message: string }
   | { type: "automation_start"; taskId: string; goal: string }
   | { type: "automation_action"; taskId: string; stepIndex: number; action: AutomationAction }

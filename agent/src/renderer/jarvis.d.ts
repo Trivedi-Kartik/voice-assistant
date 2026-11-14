@@ -3,6 +3,16 @@ export interface ToolActivity {
   result: { ok: boolean; message: string; data?: unknown };
 }
 
+// One sentence-ish piece of a reply. `data` = base64 audio; absent => speak `text` with the local voice.
+export interface SpeechChunk {
+  replyId: string;
+  seq: number;
+  final: boolean;
+  text: string;
+  data?: string;
+  mimeType?: string;
+}
+
 export interface JarvisApi {
   platform: NodeJS.Platform;
   tts: {
@@ -34,7 +44,8 @@ export interface JarvisApi {
   };
   conversation: {
     onTranscript(cb: (text: string) => void): void;
-    onAssistantText(cb: (text: string) => void): void;
+    onAssistantText(cb: (text: string, audioFollows: boolean, replyId?: string) => void): void;
+    onAssistantAudio(cb: (chunk: SpeechChunk) => void): void;
     onError(cb: (payload: { code: string; message: string }) => void): void;
     onToolActivity(cb: (payload: ToolActivity) => void): void;
     setActive(active: boolean): void;
