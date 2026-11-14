@@ -1,3 +1,4 @@
+import { NaturalVoiceEngine } from "./naturalVoice";
 // v1 ships browser SpeechSynthesis (free, zero setup). Swapping to Piper/ElevenLabs
 // later (see docs/ROADMAP.md) means adding an AudioTtsEngine behind this same
 // interface and switching createTtsEngine()'s return — no UI or protocol changes.
@@ -52,6 +53,11 @@ export class NativeSpeechDispatcherEngine implements TtsEngine {
   }
 }
 
-export function createTtsEngine(): TtsEngine {
+function createSystemEngine(): TtsEngine {
   return window.jarvis.platform === "linux" ? new NativeSpeechDispatcherEngine() : new BrowserSpeechSynthesisEngine();
+}
+
+// Natural local voice first (English), the platform's system voice for everything it can't produce.
+export function createTtsEngine(): TtsEngine {
+  return new NaturalVoiceEngine(createSystemEngine());
 }

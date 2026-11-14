@@ -4,6 +4,26 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-14 — Natural voice, zero configuration (local Kokoro); Google voice now optional
+
+No account/key setup wanted, so the default voice is now **local**: Kokoro-82M v1.0 (Apache-2.0) run by
+sherpa-onnx (Apache-2.0) in an Electron utility process. The model (350 MB) downloads automatically on
+first launch into the app data folder (resumable, size + SHA-256 pinned, prefers IPv6 — on the developer's
+network IPv4 was ~25x slower), then every reply is spoken sentence by sentence through the existing
+speech queue. Natural voices for en, hi, es, fr, it, pt; German and Thai keep the system voice (Kokoro has
+none). Until the download finishes, or on any failure, the system voice is used — per sentence.
+
+Findings that shaped it (all measured on an i3-1115G4): kokoro-js is English-only and drags ~500 MB of
+onnxruntime; sherpa-onnx-node 2.x silently drops words not in its lexicon ("opened", "Karvix"), so 1.13.8 is
+pinned (espeak-ng pronounces any word); the int8 model ran 0.8x realtime vs 1.6x for full precision (2
+threads best); espeak codes "en-gb"/"fr-fr" crash the engine (never used; worker auto-restarts up to 3x);
+Electron forbids N-API external buffers, so synthesis uses `enableExternalBuffer:false`.
+
+Verified: inside Electron from an empty data folder (download+verify+extract+load 54 s; English 3.7 s of
+audio in 2.6 s; Hindi works; German falls back) and in a locally packaged Linux build (`[voice] natural
+voice ready`; native modules unpacked). Not verified on Windows yet (CI builds it). The Google Chirp 3 HD
+path remains but is inactive without `GOOGLE_TTS_API_KEY`.
+
 ## 2026-11-14 — Karvix 2 plan approved; Phase 0: natural voice (Google Chirp 3 HD)
 
 `docs/PC_CONTROL_PLAN.md` (full PC control by voice) was approved with these decisions: Groq stays the

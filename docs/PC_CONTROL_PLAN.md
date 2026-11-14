@@ -195,7 +195,10 @@ reviewed (tool-safety-reviewer, contract-sync-checker) and verified on real mach
    their own API keys for other providers (e.g. Anthropic, OpenAI, Google) in Settings and explicitly choose
    that model — bring-your-own-key, same pattern as today's BYOK Groq key. (§5's "automatic escalation to
    Claude" is therefore replaced by user-selected models.)
-2. **Voice:** Google Chirp 3 HD, server-side, with the existing local voice as fallback.
+2. **Voice:** ~~Google Chirp 3 HD~~ — **revised the same day: no account/key configuration wanted.** Default is a
+   **local natural voice** (Kokoro, Apache-2.0, via sherpa-onnx) downloaded automatically on first launch; it
+   covers English. Other languages use the system voice until free Piper voices (license-checked) are added;
+   no free natural Thai voice exists. The Google path stays in the code but is inactive without a key.
 3. **Platform:** Windows and Linux (X11 + Wayland) are built **together** (Phases 2 and 4 run in parallel).
 4. **Go-ahead:** Phase 0 (voice) now, then Phase 1 (agent kernel v2 + eval). Each phase is reviewed by the
    product owner before the next starts.

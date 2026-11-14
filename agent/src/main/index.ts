@@ -20,6 +20,7 @@ import { createMainWindow } from "./window.js";
 import { createTray } from "./tray/trayMenu.js";
 import { initAutoUpdater } from "./updater/autoUpdate.js";
 import { applyContentSecurityPolicy } from "./csp.js";
+import { neuralVoice } from "./voice/neuralVoice.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
 let win: BrowserWindow;
@@ -92,6 +93,8 @@ app.whenReady().then(async () => {
   applyContentSecurityPolicy(!app.isPackaged);
   win = createMainWindow();
   startReminderScheduler();
+  // Natural local voice: downloads the model once in the background, then starts; system voice until then.
+  neuralVoice.start();
 
   registerIpcHandlers({
     win,

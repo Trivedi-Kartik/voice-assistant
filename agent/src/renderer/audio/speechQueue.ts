@@ -27,7 +27,11 @@ export class SpeechQueue {
   private source: AudioBufferSourceNode | null = null;
   private generation = 0;
 
-  constructor(private readonly fallback: TtsEngine) {}
+  constructor(
+    private readonly fallback: TtsEngine,
+    private readonly firstChunkTimeoutMs: number = FIRST_CHUNK_TIMEOUT_MS,
+    private readonly nextChunkTimeoutMs: number = NEXT_CHUNK_TIMEOUT_MS
+  ) {}
 
   // Called when assistant_text arrives with audioFollows. Resolves when the reply has finished playing
   // (or was stopped).
@@ -42,7 +46,7 @@ export class SpeechQueue {
 
     while (live()) {
       const key = `${replyId}:${next}`;
-      const chunk = this.chunks.get(key) ?? (await this.waitFor(key, receivedAny ? NEXT_CHUNK_TIMEOUT_MS : FIRST_CHUNK_TIMEOUT_MS));
+      const chunk = this.chunks.get(key) ?? (await this.waitFor(key, receivedAny ? this.nextChunkTimeoutMs : this.firstChunkTimeoutMs));
       if (!live()) return;
       if (!chunk) {
         // Timed out. Nothing arrived at all -> say the whole reply locally; otherwise stop here.

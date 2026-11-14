@@ -6,6 +6,10 @@ directories:
 files:
   - dist/**/*
   - package.json
+# sherpa-onnx (local natural voice) is a native addon that dlopen()s sibling shared libraries
+# (libonnxruntime, libsherpa-onnx-*); they must be real files on disk, not inside app.asar.
+asarUnpack:
+  - "**/node_modules/sherpa-onnx-*/**"
 # Real bug, caught via actually launching the app for the first time this
 # session: buildResources (build/) only ever fed the installer/exe icon —
 # it was never bundled as a runtime resource, so trayMenu.ts's icon.png

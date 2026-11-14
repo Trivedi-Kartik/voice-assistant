@@ -62,3 +62,10 @@ None of these are installed. Per the Claude Code protocol, each must go through 
 
 - `@xenova/transformers`'s model weights and `onnxruntime-node`'s binary license — not independently verified (see A, and `RISK_REGISTER.md` #9). Should be resolved before this audit's findings are considered fully closed, independent of any new phase.
 - Any future voice model (Kokoro or otherwise) — verify the specific voice/model-card terms, not just the surrounding package's license, before redistribution in a packaged build. The master doc calls this out explicitly (its own §3, "Particularly sensitive examples") and it applies here the same way.
+
+## Added 2026-11-14 (local natural voice)
+
+| Dependency | Package | License | Why |
+|---|---|---|---|
+| `sherpa-onnx-node` (+ `sherpa-onnx-<platform>` optional binaries, ~22-32 MB per platform) | agent | Apache-2.0 | Offline neural text-to-speech engine (runs in an Electron utility process) |
+| Kokoro-82M int8 English model (`kokoro-int8-en-v0_19`, ~98 MB, downloaded at runtime from the sherpa-onnx GitHub release, not bundled) | agent (runtime) | Apache-2.0 (model weights) | Natural English voice without any account or key |

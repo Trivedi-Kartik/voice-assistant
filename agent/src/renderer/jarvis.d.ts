@@ -19,6 +19,10 @@ export interface JarvisApi {
     speak(text: string, language: string): Promise<void>;
     stop(): void;
   };
+  voice: {
+    // base64 WAV from the local natural voice, or null when it isn't available for this language/yet.
+    synthesize(text: string, language: string): Promise<string | null>;
+  };
   consent: {
     hasConsented(): Promise<boolean>;
     record(): Promise<void>;

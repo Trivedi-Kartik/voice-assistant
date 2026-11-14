@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld("jarvis", {
     speak: (text: string, language: string) => ipcRenderer.invoke("tts:speak", text, language),
     stop: () => ipcRenderer.send("tts:stop"),
   },
+  voice: {
+    synthesize: (text: string, language: string) => ipcRenderer.invoke("voice:synthesize", text, language),
+  },
   consent: {
     hasConsented: () => ipcRenderer.invoke("consent:hasConsented"),
     record: () => ipcRenderer.invoke("consent:record"),

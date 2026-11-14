@@ -4,6 +4,7 @@ import type { Connection } from "../ws/connection.js";
 import { hasConsented, recordConsent } from "../consent.js";
 import { listCustomApps, removeCustomApp } from "../customApps/customAppStore.js";
 import { speakNative, stopNative } from "../tts/nativeTts.js";
+import { neuralVoice } from "../voice/neuralVoice.js";
 import { requestCancelActiveAutomation } from "../automation/automationRunner.js";
 
 export interface IpcContext {
@@ -100,6 +101,12 @@ export function registerIpcHandlers(ctx: IpcContext): void {
   // register on other platforms; renderer only calls these when
   // window.jarvis.platform === "linux".
   ipcMain.handle("tts:speak", (_e, text: string, language: string) => speakNative(text, language));
+
+  // Natural local voice. Returns base64 WAV, or null => renderer uses the system voice.
+  ipcMain.handle("voice:synthesize", (_e, text: unknown, language: unknown) => {
+    if (typeof text !== "string" || typeof language !== "string" || text.length > 2000) return null;
+    return neuralVoice.synthesize(text, language);
+  });
   ipcMain.on("tts:stop", () => {
     void stopNative();
   });
