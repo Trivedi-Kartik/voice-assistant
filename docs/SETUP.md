@@ -6,8 +6,9 @@
 - A free [Groq API key](https://console.groq.com/keys)
 - A free [Neon](https://neon.tech) Postgres database (pooled connection string)
 - A free [Upstash](https://upstash.com) Redis database
-- Windows 10/11 for running the client (tool implementations in
-  `agent/src/main/tools/` are Windows-specific in v1)
+- Windows 10/11 or Linux for running the client (platform-specific tool
+  implementations live in `*.win.ts` / `*.linux.ts` files under
+  `agent/src/main/tools/`; `control_media` is Windows-only)
 
 ## 2. Backend setup
 

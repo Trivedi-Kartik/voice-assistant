@@ -4,6 +4,74 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-14 — Whole-codebase audit: server hardening + desktop fixes
+
+Two independent read-only reviews (server, desktop) found real problems; every one below was
+confirmed against the code before being changed, and where practical proven with a test or a live
+run. Server: `tsc` clean, 69 tests passing (was 55; new tests for message validation, history
+trimming, the auth rate limiter and the automation runner's timeouts), plus a live run against the
+local server with the real Neon/Upstash (signup/login/refresh/WS/limits; test users removed after).
+Desktop: both tsconfigs typecheck and the renderer/main build; the microphone fix was proven in
+headless Chrome (original code: mic stayed live and kept streaming after Stop; fixed: released).
+**The desktop changes were NOT run in the Electron app, and nothing here was exercised on
+Windows** — in particular the PowerShell and scroll changes are verified only by inspecting the
+generated script, not by executing it.
+
+Server
+- A computer-use task could hang a turn forever (no timeout on the wait for the device's
+  screenshot / action result, and a disconnect never released it), holding the per-user turn lock
+  until a server restart. Both waits now time out (45s/30s), `AutomationRunner.abort()` exists, and
+  disconnect aborts the task, cancels the loop and clears stale confirmation state.
+- A malformed `tool_result` (missing/null `result`) threw after the pending call was removed,
+  leaving the turn waiting forever. Every client frame is now validated (`ws/clientMessage.ts`);
+  invalid frames are dropped, and tool calls resolve before any DB write.
+- Unbounded memory: no WebSocket `maxPayload` (ws default is 100 MiB) and unlimited buffered
+  audio. Now 16 MiB frame cap and 10 MiB per-utterance cap.
+- No rate limiting on `/auth` (RISK_REGISTER #6): Redis fixed-window limiter on login (per IP and
+  per account), signup and refresh; fails open if Redis is down. `trust proxy` set for Render.
+  Also: password max 128, capabilities capped, login always runs a bcrypt compare (no timing
+  signal for unknown emails).
+- Refresh-token rotation is now an atomic conditional claim; two concurrent refreshes can no
+  longer fork the chain. WS tickets are redeemed with `GETDEL` (atomic single-use). The daily-cap
+  counter no longer risks a key with no TTL (set NX + incr). Numeric env vars fail fast on garbage
+  (a NaN `DAILY_TURN_CAP` silently disabled the cap).
+- `/vision` authenticates before buffering its 25 MB body. A failed tool-call DB write no longer
+  leaves unanswered `tool_calls` in history (which broke every later turn on that connection).
+  History is trimmed to the last 20 turns at turn boundaries.
+- WS heartbeat (30s ping, terminate dead sockets), graceful SIGTERM/SIGINT shutdown, a Redis
+  error handler, and `GET /ready` (checks Postgres + Redis; `/health` stays static for Render).
+
+Desktop
+- Windows `type`/`key` actions interpolated model text into PowerShell with only ASCII-quote
+  escaping; curly quotes broke the script and could have allowed command injection. Text now
+  travels as base64. Windows scroll-down always threw (negative value into a `uint` parameter) —
+  now `int`.
+- The microphone could stay recording after Stop if pressed during the permission prompt; a failed
+  `MediaRecorder` start leaked the stream and wedged the session (and blocked auto-update). Fixed.
+- A transient network error at launch deleted the stored refresh token (user logged out for good);
+  now only a server rejection clears it, and launch retries in the background (up to ~2 min).
+  Refresh is single-flight (required now that the server detects token reuse), retries after
+  transient failures, and the WS ticket fetch refreshes once on 401.
+- WebSocket manager: old sockets and reconnect timers could leak, producing duplicate live
+  sockets after a quick logout/login. Ticket-fetch failures now retry with backoff.
+- Cancelling a computer-use task now stops it locally at once (an in-flight click/keystroke was
+  still executed), and a lost connection clears the automation UI state.
+- Replies arriving after Stop are no longer spoken; a late TTS callback can't start a second
+  recorder; logout ends the session and clears the previous account's transcript.
+- Linux TTS: reply text starting with "-" was parsed as a spd-say option and not spoken; refresh
+  token is no longer written in plaintext when OS encryption is unavailable (not persisted) and the
+  file is owner-only. Window creation/navigation is denied (defense in depth).
+
+Found but NOT fixed (needs a decision or a bigger change)
+- Electron 32 is end-of-life; upgrade needs a re-test of `safeStorage`/`desktopCapturer`/electron-store.
+- `upsertDevice` lets a second account logging in with an existing `deviceId` reuse that device row
+  (shared-machine behavior is murky: wrong language/capabilities). Needs a schema/design decision.
+- `Device.revokedAt` is read but never set; logout doesn't stop an already-issued access token.
+- Groq SDK retries/timeouts stack with the app's own loops (no per-turn deadline); memory-fact
+  size/count caps; emails aren't lowercased (changing it needs a data migration); the auto-updater
+  can restart mid-speech/automation; `Dockerfile` runs as root and uses `npm install`.
+- The server-side fixes need to be deployed to Render; the desktop fixes need a new release.
+
 ## 2026-08-15 — Documented (not fixed — confirmed not fixable in-app) the Linux AppImage sandbox crash
 
 Tried three in-app fixes for the AppImage crashing on launch with "SUID
