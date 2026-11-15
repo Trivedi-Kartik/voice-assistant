@@ -31,10 +31,18 @@ async function main() {
   const { AgentRunner } = await import(path.join(__dirname, "../../server/dist/agent/runner.js"));
   const { GroqPlanner } = await import(path.join(__dirname, "../../server/dist/agent/planner.js"));
   const base = require("./tasks.js");
-  const tasks = [...base, ...base.ui];
+  const tasks = [...base, ...base.ui, ...base.web];
   const only = process.argv.slice(2).filter((a) => !a.startsWith("-") && !a.endsWith(".js"));
   const wantUi = process.argv.includes("--ui");
-  const selected = only.length ? tasks.filter((t) => only.includes(t.id)) : wantUi ? base.ui : base; // default: no GUI tasks
+  const wantWeb = process.argv.includes("--web");
+  const selected = only.length ? tasks.filter((t) => only.includes(t.id)) : wantUi ? base.ui : wantWeb ? base.web : base; // default: no GUI/web tasks
+  // Web tasks: local mock shop + a headless throwaway browser profile.
+  let shop = null;
+  if (selected.some((t) => t.web)) {
+    process.env.KARVIX_BROWSER_HEADLESS = "1";
+    process.env.KARVIX_BROWSER_PROFILE = fs.mkdtempSync(path.join(SANDBOX, "browser-"));
+    shop = await require("../test/mockShop.js").start();
+  }
   const results = [];
 
   for (const task of selected) {
@@ -61,7 +69,8 @@ async function main() {
     };
     const groq = new GroqPlanner(process.env.GROQ_API_KEY, process.env.EVAL_MODEL || undefined); // EVAL_MODEL=openai/gpt-oss-20b uses a separate quota
     const planner = { next: async (m) => { llmCalls++; const d = await groq.next(m); if (d.kind === "action") actions.push(d.action); return d; } };
-    const runner = new AgentRunner({ goal: task.goal, language: task.language || "en", device, planner });
+    const goal = typeof task.goal === "function" ? task.goal(shop.base) : task.goal;
+    const runner = new AgentRunner({ goal, language: task.language || "en", device, planner });
 
     const t0 = Date.now();
     let outcome, asked = 0, confirmations = 0;
@@ -69,7 +78,12 @@ async function main() {
     try {
       outcome = await runner.start();
       for (let guard = 0; guard < 6 && (outcome.kind === "ask" || outcome.kind === "confirm"); guard++) {
-        if (outcome.kind === "ask") { asked++; outcome = await runner.resumeWithAnswer(answers.shift() || "I don't know, use your best judgement."); }
+        if (outcome.kind === "ask") {
+          asked++;
+          let a = task.answersRepeat ? answers[0] : answers.shift();
+          if (typeof a === "function") a = await a(outcome.question);
+          outcome = await runner.resumeWithAnswer(a || "I don't know, use your best judgement.");
+        }
         else { confirmations++; outcome = await runner.resumeWithConfirmation(task.confirm !== false); }
       }
     } catch (e) {
@@ -80,7 +94,7 @@ async function main() {
       const out = require("child_process").spawnSync("python3", [path.join(__dirname, "../src/main/agent/a11y/atspi_helper.py"), JSON.stringify({ cmd: "windows" })], { encoding: "utf8" }).stdout;
       try { return JSON.parse(out).windows.some((w) => w.title.toLowerCase().includes(text.toLowerCase())); } catch { return false; }
     };
-    const r = { outcome, actions, executed, windowTitled };
+    const r = { outcome, actions, executed, windowTitled, trace };
     let pass = false;
     try { pass = !!task.check(home, r); } catch { pass = false; }
     // A task only passes if it also ENDED the right way (default: done) — a correct file followed by a
@@ -101,6 +115,7 @@ async function main() {
   const avg = (k) => (results.reduce((s, r) => s + r[k], 0) / results.length).toFixed(1);
   console.log(`\nRESULT ${passed}/${results.length} passed (${Math.round((passed / results.length) * 100)}%)  avg steps=${avg("steps")} avg llm calls=${avg("llmCalls")} avg time=${avg("secs")}s`);
   fs.writeFileSync(path.join(__dirname, "last-results.json"), JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
+  if (shop) { await require("../dist/main/agent/browser/browser.js").closeBrowser(); shop.server.close(); }
   fs.rmSync(SANDBOX, { recursive: true, force: true });
   app.quit();
 }

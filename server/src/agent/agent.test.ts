@@ -322,3 +322,17 @@ describe("localized confirmation prompts", () => {
     expect(confirmPrompt("delete", "~/x", "zz")).toBe("Move ~/x to the Trash? Say yes to confirm.");
   });
 });
+
+describe("GroqPlanner plain-text JSON replies", () => {
+  it("decodes a JSON-shaped plain reply instead of speaking it raw (regression from the web eval)", async () => {
+    vi.resetModules();
+    vi.doMock("../llm.js", () => ({
+      DEFAULT_CHAT_MODEL: "m",
+      runLlmStep: vi.fn(async () => ({ assistantMessage: { role: "assistant", content: '{"summary":"No deals are listed."}' }, toolCalls: [] })),
+    }));
+    const { GroqPlanner } = await import("./planner.js");
+    const d = await new GroqPlanner("k").next([]);
+    expect(d).toMatchObject({ kind: "action", action: { name: "done", args: { summary: "No deals are listed." } } });
+    vi.doUnmock("../llm.js");
+  });
+});

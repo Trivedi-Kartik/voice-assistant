@@ -85,6 +85,11 @@ async function currentPage(): Promise<Page> {
   return pages.length ? pages[pages.length - 1] : ctx.newPage();
 }
 
+// For the eval harness only: lets a scripted "user" do what the agent must never do (type a card number).
+export async function pageForTests(): Promise<Page> {
+  return currentPage();
+}
+
 export async function closeBrowser(): Promise<void> {
   const c = context;
   context = null;
