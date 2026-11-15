@@ -5,6 +5,7 @@ import { SKILLS, skillErrorMessage, type AgentActionResult } from "./skills.js";
 import { observe, observeUi, runUiAction } from "./desktop.js";
 import { resolveUserPath } from "./paths.js";
 import { isTerminalWindow } from "./guards.js";
+import { webAction } from "./browser/browser.js";
 
 // Device side of the Karvix 2 PC agent: answers the server's agent_request (observe / act / verify) and
 // mirrors agent_status into the existing "automation" panel (goal + live steps + Stop).
@@ -36,6 +37,7 @@ async function act(a: AgentActionWire): Promise<AgentActionResult> {
   const skill = SKILLS[a.name];
   try {
     if (skill) return await skill(a);
+    if (a.name.startsWith("web_")) return await webAction(a);
     if (UI_ACTIONS.has(a.name)) return await runUiAction(a);
     if (a.name === "observe") return await observeUi();
     return { ok: false, message: `Unknown action "${a.name}".` };

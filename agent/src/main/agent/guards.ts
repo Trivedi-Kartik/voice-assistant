@@ -24,3 +24,37 @@ export function humanTextFromRejected(rejected: string): string {
     return trimmed;
   }
 }
+
+// ---- Web safety (pure, unit-tested) ----
+
+// Buttons/links whose click has real-world consequences. "Add to cart" and "Checkout" are deliberately NOT here:
+// the agent may shop right up to the final commitment, and stops at "Place order" / "Pay" / "Send"… for a spoken yes.
+const RISKY_WEB_LABEL =
+  /\b(place (your |my |the )?order|buy( it)? now|buy|pay( now| securely)?|complete (the )?(purchase|order|payment)|confirm (the )?(order|purchase|payment)|submit (the )?(order|payment)|purchase|send( message| now)?|post|publish|delete( account)?|remove account|close account|unsubscribe|subscribe|transfer( money| funds)?|withdraw|sign ?up|register|create account|donate)\b/i;
+
+export function isRiskyWebLabel(label: string): boolean {
+  return RISKY_WEB_LABEL.test(label);
+}
+
+// Fields the agent must never type into: credentials and payment/identity details. The user types those
+// themselves in the browser window, then tells the agent to continue.
+const SECRET_FIELD =
+  /\b(password|passcode|passwd|pin|otp|one[- ]time|verification code|security code|cvv|cvc|card[- ]?number|credit card|cc-(number|csc|exp)|iban|routing number|ssn|social security)\b/i;
+
+export function isSecretField(info: { type?: string; name?: string; autocomplete?: string; label?: string }): boolean {
+  if ((info.type ?? "").toLowerCase() === "password") return true;
+  return SECRET_FIELD.test(`${info.name ?? ""} ${info.autocomplete ?? ""} ${info.label ?? ""}`);
+}
+
+// Only ordinary web pages. file:, javascript:, data:, chrome: etc. are refused (local file access, script injection,
+// browser internals).
+export function checkWebUrl(raw: string): { ok: true; url: string } | { ok: false; message: string } {
+  let u: URL;
+  try {
+    u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return { ok: false, message: `"${raw}" isn't a web address.` };
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, message: `I only open http(s) pages, not ${u.protocol}.` };
+  return { ok: true, url: u.toString() };
+}

@@ -47,6 +47,12 @@ function describe(action: AgentAction): string {
     case "focus_window": return `Switching to ${v("title")}`;
     case "close_window": return `Closing ${v("title")}`;
     case "wait": return "Waiting";
+    case "web_open": return `Opening ${v("url")}`;
+    case "web_click": return `Clicking ${v("element")} on the page`;
+    case "web_fill": return `Filling in ${v("element")}`;
+    case "web_observe":
+    case "web_read": return "Reading the page";
+    case "system_setting": return `Setting ${v("setting").replace(/_/g, " ")}`;
     default: return action.name.replace(/_/g, " ");
   }
 }

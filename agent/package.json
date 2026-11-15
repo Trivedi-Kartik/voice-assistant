@@ -1,7 +1,7 @@
 {
   "name": "karvix",
   "version": "0.1.0",
-  "description": "Karvix \u2014 a voice assistant that can actually act on your computer.",
+  "description": "Karvix — a voice assistant that can actually act on your computer.",
   "author": "Karvix",
   "license": "MIT",
   "private": true,
@@ -23,6 +23,7 @@
     "dotenv": "^16.4.5",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.3.4",
+    "playwright-core": "1.65.1",
     "sherpa-onnx-node": "1.13.8",
     "ws": "^8.18.0",
     "zod": "^3.23.8",

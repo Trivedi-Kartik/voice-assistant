@@ -33,6 +33,30 @@ export const AGENT_ACTION_SCHEMAS: ToolSchema[] = [
   fn("open_url", "Open an http(s) URL in the browser.", { url: s("URL") }, ["url"]),
   fn("clipboard", "Read or write the clipboard.", { op: s("read | write", { enum: ["read", "write"] }), text: s("Text for write") }, ["op"]),
   fn("wait", "Wait for something to load.", { seconds: { type: "number", description: "1-10" } }, ["seconds"]),
+  fn(
+    "system",
+    "Read or change a computer setting. value: 'get', a number 0-100, 'up'/'down', 'mute'/'unmute', or 'on'/'off'.",
+    {
+      setting: s("Setting", { enum: ["volume", "brightness", "dark_mode", "do_not_disturb", "wifi", "bluetooth", "lock_screen"] }),
+      value: s("get | 0-100 | up | down | mute | unmute | on | off"),
+    },
+    ["setting", "value"]
+  ),
+  fn(
+    "web",
+    "Use the web in the user's dedicated browser (preferred for websites, shopping, forms). ops: open(url) | observe | click(element) | fill(element,text) " +
+      "| press(key) | scroll(direction) | back | read | close. Elements come as [w12] ids from the page listing. The user types passwords/payment " +
+      "details themselves — never fill those; ask them. You may add to cart and go through checkout, but the final Place order/Pay/Send click needs the user's yes (automatic).",
+    {
+      op: s("Operation", { enum: ["open", "observe", "click", "fill", "press", "scroll", "back", "read", "close"] }),
+      url: s("For open"),
+      element: s("Element id like w12, or its exact visible name"),
+      text: s("For fill (a select's option label; 'false' unticks a checkbox)"),
+      key: s("For press, e.g. Enter"),
+      direction: s("For scroll", { enum: ["down", "up"] }),
+    },
+    ["op"]
+  ),
   fn("focus_window", "Bring a window to the front by title.", { title: s("Title or part of it") }, ["title"]),
   fn("close_window", "Close a window like the user would (its Close button). Succeeds only once it is really gone; if the app asks to save, you must answer that.", { title: s("Title or part of it") }, ["title"]),
   fn("click", "Click a UI element (id from the observation, or its name).", { element: s("Element id or name"), double: { type: "boolean", description: "Double-click" } }, ["element"]),
@@ -48,7 +72,8 @@ export const AGENT_ACTION_SCHEMAS: ToolSchema[] = [
 // Internal action names understood by the runner, safety gate and desktop client.
 export const AGENT_ACTION_NAMES = new Set([
   "file_read", "file_write", "file_list", "file_mkdir", "file_move", "file_copy", "file_delete", "file_open",
-  "open_app", "open_url", "clipboard_read", "clipboard_write", "wait",
+  "web_open", "web_observe", "web_click", "web_fill", "web_press", "web_scroll", "web_back", "web_read", "web_close",
+  "open_app", "open_url", "clipboard_read", "clipboard_write", "wait", "system_setting",
   "focus_window", "close_window", "click", "set_text", "type_text", "hotkey", "observe",
   "ask_user", "done", "fail",
 ]);
@@ -56,6 +81,11 @@ export const META_ACTIONS = new Set(["ask_user", "done", "fail"]);
 
 // Maps a compact planner call to the internal action name + args.
 export function toInternalAction(name: string, args: Record<string, unknown>): { name: string; args: Record<string, unknown> } {
+  if (name === "system") return { name: "system_setting", args };
+  if (name === "web") {
+    const { op, ...rest } = args;
+    return { name: `web_${typeof op === "string" ? op : "?"}`, args: rest };
+  }
   if (name === "file" || name === "clipboard") {
     const { op, ...rest } = args;
     const internal = `${name}_${typeof op === "string" ? op : "?"}`;

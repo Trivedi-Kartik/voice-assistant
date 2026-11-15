@@ -21,6 +21,17 @@ export function classifyAction(action: AgentAction, elementLabel?: string, langu
   if (action.confirmed) return { level: "allow" };
   const a = action.args;
   switch (action.name) {
+    case "system_setting": {
+      // Turning Wi-Fi/Bluetooth off can cut the user off from Karvix (or their headphones); locking the screen
+      // locks them out mid-task.
+      const setting = s(a.setting);
+      const off = /^(off|false|disable|disabled|no|0)$/i.test(s(a.value));
+      if (setting === "lock_screen") return { level: "confirm", prompt: confirmPrompt("setting", "Lock the screen", language) };
+      if ((setting === "wifi" || setting === "bluetooth") && off) {
+        return { level: "confirm", prompt: confirmPrompt("setting", `Turn ${setting === "wifi" ? "Wi-Fi" : "Bluetooth"} off`, language) };
+      }
+      return { level: "allow" };
+    }
     case "file_delete":
       return { level: "confirm", prompt: confirmPrompt("delete", s(a.path), language) };
     case "click": {

@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { dispatchToolCall } from "../tools/index.js";
 import { displayPath, resolveUserPath, PathError } from "./paths.js";
+import { changeSetting } from "./settings.js";
 import type { AgentActionWire } from "../../shared/protocol.js";
 
 export interface AgentActionResult {
@@ -12,7 +13,7 @@ export interface AgentActionResult {
   data?: unknown;
   // Fresh state of the screen after the action (windows / UI elements) — shown to the planner.
   observation?: { platform?: string; activeWindow?: { title: string; app?: string }; windows?: { title: string; app?: string }[]; elements?: string; notes?: string[] };
-  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite"; target?: string };
+  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite" | "click"; target?: string };
 }
 
 const MAX_READ_BYTES = 200 * 1024;
@@ -121,6 +122,17 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
   async clipboard_write(a) {
     clipboard.writeText(str(a.args.text));
     return { ok: true, message: "Copied to the clipboard." };
+  },
+
+  async system_setting(a) {
+    // Settings that can cut the user off (or lock them out) must have been confirmed — re-checked here too.
+    const setting = str(a.args.setting);
+    const value = str(a.args.value) || "get";
+    const disruptive = setting === "lock_screen" || ((setting === "wifi" || setting === "bluetooth") && /^(off|false|disable|disabled|no|0)$/i.test(value));
+    if (disruptive && !a.confirmed) {
+      return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Change ${setting.replace(/_/g, " ")} to ${value}? Say yes to confirm.` } };
+    }
+    return changeSetting(setting, value);
   },
 
   async wait(a) {

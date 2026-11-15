@@ -235,6 +235,17 @@ describe("classifyAction (deterministic safety gate)", () => {
     expect(classifyAction(a("set_text", { element: "Card number", text: "4111" })).level).toBe("block");
     expect(classifyAction(a("type_text", { text: "x" }), "Password").level).toBe("block");
   });
+  it("asks before settings that can cut the user off, not before harmless ones", () => {
+    expect(classifyAction(a("system_setting", { setting: "wifi", value: "off" })).level).toBe("confirm");
+    expect(classifyAction(a("system_setting", { setting: "bluetooth", value: "off" })).level).toBe("confirm");
+    expect(classifyAction(a("system_setting", { setting: "lock_screen", value: "on" })).level).toBe("confirm");
+    expect(classifyAction(a("system_setting", { setting: "wifi", value: "on" })).level).toBe("allow");
+    expect(classifyAction(a("system_setting", { setting: "volume", value: "30" })).level).toBe("allow");
+    expect(classifyAction(a("system_setting", { setting: "dark_mode", value: "off" })).level).toBe("allow");
+  });
+  it("maps the compact system call to the internal action", () => {
+    expect(toInternalAction("system", { setting: "volume", value: "up" })).toEqual({ name: "system_setting", args: { setting: "volume", value: "up" } });
+  });
   it("lets confirmed actions through", () => {
     expect(classifyAction(a("file_delete", { path: "~/x" }, true)).level).toBe("allow");
   });
