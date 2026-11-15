@@ -1,6 +1,18 @@
 import type { AgentAction } from "./types.js";
 import { confirmPrompt } from "./confirmPrompts.js";
 
+// Mirrors agent/src/main/agent/guards.ts isRiskyShortcut by hand (separate packages).
+export function isRiskyShortcut(keys: string[]): boolean {
+  const k = keys.map((x) => x.toLowerCase().trim());
+  const has = (n: string) => k.includes(n);
+  if (has("alt") && (has("f4") || has("tab"))) return true;
+  if ((has("ctrl") || has("control")) && (has("w") || has("q") || has("f4") || has("d"))) return true;
+  if (has("super") || has("win") || has("meta")) return true;
+  if (has("shift") && has("delete")) return true;
+  if (has("delete") && k.length === 1) return true;
+  return false;
+}
+
 // Deterministic safety gate (plan §3.5). It never trusts the model's own judgement of risk: anything
 // that deletes, sends, buys, submits or could expose credentials stops for an explicit spoken "yes",
 // with the exact target read back. The desktop client re-checks with local knowledge (e.g. whether a
@@ -21,6 +33,9 @@ export function classifyAction(action: AgentAction, elementLabel?: string, langu
   if (action.confirmed) return { level: "allow" };
   const a = action.args;
   switch (action.name) {
+    case "clipboard_read":
+      // The clipboard often holds passwords and private text.
+      return { level: "confirm", prompt: confirmPrompt("clipboard", "", language) };
     case "system_setting": {
       // Turning Wi-Fi/Bluetooth off can cut the user off from Karvix (or their headphones); locking the screen
       // locks them out mid-task.
@@ -41,8 +56,9 @@ export function classifyAction(action: AgentAction, elementLabel?: string, langu
     }
     case "hotkey": {
       const keys = Array.isArray(a.keys) ? a.keys.map((k) => String(k).toLowerCase()) : [];
-      // Delete-ish shortcuts on a selection.
+      // Shortcuts that close windows, quit apps, open system menus or delete.
       if (keys.includes("delete") && keys.includes("shift")) return { level: "confirm", prompt: confirmPrompt("shift_delete", "", language) };
+      if (isRiskyShortcut(keys)) return { level: "confirm", prompt: confirmPrompt("shortcut", keys.join("+"), language) };
       return { level: "allow" };
     }
     case "type_text":

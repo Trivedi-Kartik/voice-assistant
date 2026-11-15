@@ -39,8 +39,13 @@ export function isSystemPermissionDialog(app?: string, title?: string): boolean 
 
 // Buttons/links whose click has real-world consequences. "Add to cart" and "Checkout" are deliberately NOT here:
 // the agent may shop right up to the final commitment, and stops at "Place order" / "Pay" / "Send"… for a spoken yes.
-const RISKY_WEB_LABEL =
-  /\b(place (your |my |the )?order|buy( it)? now|buy|pay( now| securely)?|complete (the )?(purchase|order|payment)|confirm (the )?(order|purchase|payment)|submit (the )?(order|payment)|purchase|send( message| now)?|post|publish|delete( account)?|remove account|close account|unsubscribe|subscribe|transfer( money| funds)?|withdraw|sign ?up|register|create account|donate)\b/i;
+// English uses word boundaries; the other supported languages' stems match anywhere (JS \b doesn't work for non-Latin
+// scripts). A label is still page/app-controlled text, so this is one signal among several (see structural checks).
+const RISKY_WEB_LABEL = new RegExp(
+  "\\b(place (your |my |the )?order|buy( it)? now|buy|pay( now| securely)?|complete (the )?(purchase|order|payment)|confirm (the )?(order|purchase|payment)|submit (the )?(order|payment)|purchase|send( message| now)?|post|publish|delete( account)?|remove account|close account|unsubscribe|subscribe|transfer( money| funds)?|withdraw|sign ?up|register|create account|donate|reply|forward|share)\\b" +
+    "|comprar|pagar|enviar|eliminar|borrar|suscribir|donar|acheter|payer|envoyer|supprimer|effacer|virement|kaufen|bezahlen|senden|löschen|bestell|überweis|comprare|pagare|inviare|elimina|cancella|acquista|ordina|excluir|apagar|finalizar compra|खरीद|भुगतान|भेज|हटा|मिटा|ऑर्डर|ซื้อ|ชำระ|จ่าย|ส่ง|ลบ|สั่งซื้อ",
+  "i"
+);
 
 export function isRiskyWebLabel(label: string): boolean {
   return RISKY_WEB_LABEL.test(label);
@@ -67,4 +72,37 @@ export function checkWebUrl(raw: string): { ok: true; url: string } | { ok: fals
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, message: `I only open http(s) pages, not ${u.protocol}.` };
   return { ok: true, url: u.toString() };
+}
+
+// ---- Files: never create or open something that can RUN ----
+// An injected instruction could write ~/Desktop/x.bat and then "open" it (which executes it), or drop a script into a
+// startup folder. Executable/script types are refused for create/move/copy destinations and for file_open.
+const EXECUTABLE_EXT = new Set([
+  "exe", "com", "bat", "cmd", "scr", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "lnk", "url", "reg", "jar",
+  "dll", "cpl", "pif", "gadget", "sh", "bash", "zsh", "fish", "py", "pl", "rb", "php", "desktop", "appimage", "run", "bin", "command", "app", "workflow", "scpt", "deb", "rpm", "dmg", "pkg",
+]);
+
+export function isExecutablePath(p: string): boolean {
+  const base = p.replace(/\\/g, "/").split("/").pop() ?? "";
+  const ext = base.includes(".") ? base.split(".").pop()!.toLowerCase() : "";
+  return EXECUTABLE_EXT.has(ext);
+}
+
+// ---- Keyboard shortcuts that close things, quit, or open system menus ----
+export function isRiskyShortcut(keys: string[]): boolean {
+  const k = keys.map((x) => x.toLowerCase().trim());
+  const has = (n: string) => k.includes(n);
+  if (has("alt") && (has("f4") || has("tab"))) return true;
+  if ((has("ctrl") || has("control")) && (has("w") || has("q") || has("f4") || has("d"))) return true;
+  if (has("super") || has("win") || has("meta")) return true; // run dialog / launcher / lock
+  if (has("shift") && has("delete")) return true;
+  if (has("delete") && k.length === 1) return true;
+  return false;
+}
+
+// Enter submits forms and sends chat messages. It's only harmless in a search/address field.
+export function enterNeedsConfirmation(focused?: { role?: string; type?: string; name?: string }): boolean {
+  if (!focused) return true; // can't tell what has focus -> don't risk a send
+  if ((focused.type ?? "").toLowerCase() === "search") return false;
+  return !/\b(search|find|query|filter|go to|address|url)\b/i.test(focused.name ?? "");
 }

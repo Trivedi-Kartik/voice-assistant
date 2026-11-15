@@ -30,7 +30,10 @@ export function resolveUserPath(input: string): string {
 function assertAllowed(p: string, home: string): void {
   const rel = path.relative(home, p);
   if (rel.startsWith("..") || path.isAbsolute(rel)) throw new PathError(`I can only work with files inside your home folder (not ${p}).`);
-  if (rel.split(path.sep).some((part) => part.startsWith("."))) throw new PathError("I don't touch hidden files or folders.");
+  const parts = rel.split(path.sep);
+  if (parts.some((part) => part.startsWith("."))) throw new PathError("I don't touch hidden files or folders.");
+  // Application data and startup locations: where programs keep settings and where code is dropped to run at login.
+  if (parts.some((part) => /^(appdata|start menu|library|startup|autostart)$/i.test(part))) throw new PathError("I don't touch application data or startup folders.");
 }
 
 // Show paths back to the planner/user in the short ~ form.

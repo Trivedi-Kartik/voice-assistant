@@ -174,3 +174,15 @@ describe("runToolLoop — Karvix 2 PC agent", () => {
     expect(runLlmStep).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("runToolLoop — pc_task is never dispatched unless it was offered", () => {
+  it("a model that names pc_task on a client without pc_agent gets a refusal, and the handler is never called", async () => {
+    vi.mocked(runLlmStep).mockReset();
+    vi.mocked(runLlmStep).mockResolvedValueOnce(llmToolCalls([{ id: "t1", name: "pc_task", args: { goal: "wipe it" } }])).mockResolvedValueOnce(llmText("Sorry, I can't."));
+    const deps = makeDeps({ capabilities: ["open_app"] }); // no pc_agent
+    await runToolLoop(deps);
+    expect(deps.handleServerTool).not.toHaveBeenCalled();
+    expect(deps.history.find((m) => m.role === "tool")?.content).toContain("isn't available");
+  });
+});

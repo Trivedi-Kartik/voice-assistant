@@ -120,7 +120,12 @@ export function collectPage(opts: { max: number; secret: string; risky: string }
         /* ignore */
       }
     }
-    elements.push({ id: `w${el.getAttribute("data-kvx")}`, role, name, type, value, href, flags, secret, risky: role !== "textbox" && riskyRe.test(name) });
+    // Structural signal that doesn't depend on a (page-controlled) label: a submit control inside a form that asks for payment
+    // or identity details is the commit step, whatever it says on the button.
+    const form = el.closest("form");
+    const isSubmit = (type === "submit" || (el.tagName.toLowerCase() === "button" && (el as HTMLButtonElement).type !== "button")) && !!form;
+    const formAsksSecrets = !!form && Array.from(form.querySelectorAll<HTMLInputElement>("input")).some((i) => i.type === "password" || /cc-|card|cvv|cvc|iban/i.test(`${i.autocomplete} ${i.name}`));
+    elements.push({ id: `w${el.getAttribute("data-kvx")}`, role, name, type, value, href, flags, secret, risky: role !== "textbox" && (riskyRe.test(name) || (isSubmit && formAsksSecrets)) });
   }
 
   const textRaw = (document.body?.innerText ?? "").replace(/\n{3,}/g, "\n\n").trim();

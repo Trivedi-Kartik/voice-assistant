@@ -4,6 +4,30 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-15 — Independent safety review of the PC agent: 10 holes closed
+
+A read-only reviewer audited everything added since the voice release; the serious findings were confirmed and fixed, each
+with a test (server 142, agent 12, plus 13 live checks of the file/clipboard/shortcut skills in Electron):
+- **Write-then-open code execution:** the agent could create `x.bat`/`.js`/`.lnk`… and open it. Programs and scripts (and
+  anything marked executable on Linux) can no longer be created, renamed into, or opened; AppData, Start Menu and
+  Startup/Autostart folders are off limits.
+- **Click by element id bypassed the "Delete/Send/Pay" gate** (the server only saw "e47"): the device now resolves the label and
+  re-checks, with the risky-word list extended to the 8 supported languages.
+- **`file_write` with an unexpected `mode` silently overwrote files:** mode is whitelisted.
+- **Data exfiltration path:** `clipboard_read` is gated; after the agent reads private data (clipboard or a file), going out to
+  a website needs a spoken yes (once per task), localized.
+- **`Enter` sent chat messages / submitted forms unconfirmed:** Enter needs a yes unless the focused field is a search/address box.
+  A submit button inside a payment form is stopped even if the page labels it "Continue".
+- **Input guards fail closed and cover every path:** typing/shortcuts/vision clicks refuse when the active window can't be
+  determined, is a terminal, or is a system permission/password dialog (the agent could previously click "Allow" on its own
+  consent dialog); the window to type into must be named. Shortcuts that close/quit/open system menus (Alt+F4, Ctrl+W/Q,
+  Super…) need a yes.
+- **Vision clicking** is now refused by the runner too while switched off (it was only hidden from the schema).
+- **Server hardening:** `pc_task` is only dispatched if it was offered; client feature strings are allow-listed; the
+  summary re-entering the main model's context is length-limited.
+Residual, documented: page-controlled labels/DOM can still mislead web risk detection (structural payment-form signal added,
+isolated-world collection not done); a planner could still be talked into an irreversible-but-ungated action not on these lists.
+
 ## 2026-11-15 — Vision fallback: screenshots fixed on Wayland; vision CLICKING disabled (measured unreliable)
 
 **Screenshots now work on Wayland** (the original complaint): frames come from the ScreenCast portal through GStreamer, in

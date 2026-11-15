@@ -80,3 +80,23 @@ test("refuses passwords, non-web URLs, and needs a yes even when the page itself
   assert.strictEqual(r.ok, false, "prompt injection on the page can't make it click Delete account");
   assert.ok(r.needsConfirmation);
 });
+
+test("a benign-sounding button that actually commits a payment form is still stopped; Enter in a comment/chat box needs a yes, in search it doesn't", async (t) => {
+  const { server, base } = await start();
+  t.after(async () => { await closeBrowser(); server.close(); });
+  let r = await act("web_open", { url: base + "/checkout2" });
+  assert.ok(r.ok, r.message);
+  r = await act("web_click", { element: "Continue" });
+  assert.strictEqual(r.ok, false, "a submit inside a payment form needs a yes even though its label says Continue");
+  assert.ok(r.needsConfirmation);
+
+  r = await act("web_click", { element: "Comment" });
+  r = await act("web_fill", { element: "Comment", text: "hello" });
+  r = await act("web_press", { key: "Enter" });
+  assert.strictEqual(r.ok, false, "Enter in a comment box can post it");
+  assert.ok(r.needsConfirmation);
+
+  r = await act("web_fill", { element: "Search", text: "mugs" });
+  r = await act("web_press", { key: "Enter" });
+  assert.ok(r.ok, r.message); // search boxes are fine
+});

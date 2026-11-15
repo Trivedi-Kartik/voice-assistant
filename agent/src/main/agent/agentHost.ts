@@ -4,7 +4,7 @@ import type { AgentActionWire, AgentExpectationWire, ClientMessage, ServerMessag
 import { SKILLS, skillErrorMessage, type AgentActionResult } from "./skills.js";
 import { observe, observeUi, runUiAction } from "./desktop.js";
 import { resolveUserPath } from "./paths.js";
-import { isTerminalWindow } from "./guards.js";
+import { isRiskyShortcut, isSystemPermissionDialog, isTerminalWindow } from "./guards.js";
 import { webAction } from "./browser/browser.js";
 
 // Device side of the Karvix 2 PC agent: answers the server's agent_request (observe / act / verify) and
@@ -15,6 +15,7 @@ import { webAction } from "./browser/browser.js";
 // asked for.
 
 const UI_ACTIONS = new Set(["focus_window", "close_window", "click", "set_text", "type_text", "hotkey"]);
+const str = (v: unknown) => (typeof v === "string" ? v : "");
 const SECRET_FIELD = /\b(password|passcode|pin|otp|cvv|cvc|card number)\b/i;
 
 type Send = (msg: ClientMessage) => void;
@@ -27,11 +28,32 @@ async function act(a: AgentActionWire): Promise<AgentActionResult> {
   if ((a.name === "type_text" || a.name === "set_text") && SECRET_FIELD.test(String(a.args.element ?? ""))) {
     return { ok: false, message: "I won't type into password or payment fields — please do that yourself." };
   }
-  // Typing/shortcuts into a terminal would run commands — refuse, whatever the server asked for.
-  if (a.name === "type_text" || a.name === "hotkey" || a.name === "set_text") {
-    const o = await observe().catch(() => undefined);
-    if (isTerminalWindow(o?.activeWindow?.app, o?.activeWindow?.title)) {
+  // Everything that synthesizes keyboard or mouse input. These checks run on the DEVICE whatever the server decided, and
+  // they fail CLOSED: if we can't tell what is in front, we don't type.
+  const INPUT_ACTIONS = new Set(["type_text", "hotkey", "set_text", "screen_click"]);
+  if (INPUT_ACTIONS.has(a.name)) {
+    if ((a.name === "type_text" || a.name === "hotkey") && !str(a.args.window).trim()) {
+      return { ok: false, message: "Say which window to type into (use observe, then pass its title) — I won't type blindly." };
+    }
+    let front: { app?: string; title?: string } | undefined;
+    try {
+      front = (await observe()).activeWindow;
+    } catch {
+      return { ok: false, message: "I can't tell which window is in front, so I won't send keystrokes or clicks." };
+    }
+    // A terminal would run what's typed; a permission/password dialog would let the agent grant itself access.
+    if (isTerminalWindow(front?.app, front?.title)) {
       return { ok: false, message: "A terminal is in front, and I never type into terminals (a newline would run a command). Use the file skills instead." };
+    }
+    if (isSystemPermissionDialog(front?.app, front?.title)) {
+      return { ok: false, message: "A system permission or password dialog is in front — only the user can answer it. Ask them to." };
+    }
+  }
+  // Shortcuts that close windows, quit apps or open system menus need the user's yes (the server also asks; this is the re-check).
+  if (a.name === "hotkey" && !a.confirmed) {
+    const keys = Array.isArray(a.args.keys) ? a.args.keys.map(String) : [];
+    if (isRiskyShortcut(keys)) {
+      return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Press ${keys.join("+")}? That can close windows or open system menus. Say yes to confirm.`, kind: "shortcut", target: keys.join("+") } };
     }
   }
   const skill = SKILLS[a.name];

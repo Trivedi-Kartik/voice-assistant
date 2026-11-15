@@ -89,6 +89,7 @@ function rateLimitMessage(err: unknown, language: string): string {
 // ~10 MB of webm/opus is many minutes of speech; anything beyond is a bug or abuse, not an utterance.
 const MAX_UTTERANCE_BYTES = 10 * 1024 * 1024;
 
+const KNOWN_CLIENT_FEATURES = new Set(["pc_agent", "assistant_audio"]);
 const TOOL_TIMEOUT_MS = 12_000;
 // Mirrors the same override on the client (agent/src/main/tools/index.ts) —
 // add_custom_app blocks on a human browsing a file dialog, so the server
@@ -235,7 +236,9 @@ export class Session {
         return;
       case "client_hello":
         this.supportsServerAudio = msg.features.includes("assistant_audio");
-        this.clientFeatures = msg.features;
+        // Only features we know. This list is merged into the tool-offer capabilities, so an arbitrary string from a client
+        // must never be able to add itself.
+        this.clientFeatures = msg.features.filter((f) => KNOWN_CLIENT_FEATURES.has(f));
         return;
       case "agent_response":
         if (this.activeAgent && msg.taskId === this.activeAgent.id) this.agentDevice?.handleResponse(msg.requestId, msg.result);
@@ -678,8 +681,11 @@ export class Session {
     }
     this.activeAgent = undefined;
     this.agentDevice = undefined;
-    if (outcome.kind === "done") return { ok: true, message: outcome.summary };
-    if (outcome.kind === "failed") return { ok: false, message: outcome.reason };
+    // The summary is planner prose that may paraphrase page/file text — keep it short before it re-enters the main model's
+    // context (tools there stay gated either way).
+    const brief = (t: string) => t.replace(/[\u0000-\u001f]+/g, " ").slice(0, 400);
+    if (outcome.kind === "done") return { ok: true, message: brief(outcome.summary) };
+    if (outcome.kind === "failed") return { ok: false, message: brief(outcome.reason) };
     return { ok: false, message: "Stopped." };
   }
 

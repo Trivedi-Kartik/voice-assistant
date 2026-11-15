@@ -103,7 +103,7 @@ async function windowsUi(a: AgentActionWire): Promise<AgentActionResult> {
       return { ok: true, message: `Pressed ${keys.join("+")}.` };
     }
     case "click": {
-      const r = await clickElement(str(a.args.element));
+      const r = await clickElement(str(a.args.element), a.confirmed === true);
       return r.ok && a.args.double === true ? { ok: false, message: "Double-click isn't supported — click once or use a keyboard shortcut." } : r;
     }
     case "set_text":
@@ -151,7 +151,7 @@ async function linuxUi(a: AgentActionWire): Promise<AgentActionResult> {
     // Accessibility-driven (works on Wayland and X11): operate controls by id/name, no pixels.
     case "click": {
       if (!a11y) return { ok: false, message: "Clicking needs the accessibility library (sudo apt install python3-gi gir1.2-atspi-2.0)." };
-      const r = await clickElement(str(a.args.element));
+      const r = await clickElement(str(a.args.element), a.confirmed === true);
       return r.ok && a.args.double === true ? { ok: false, message: "Double-click isn't supported through accessibility — click once or use a keyboard shortcut." } : r;
     }
     case "set_text": {

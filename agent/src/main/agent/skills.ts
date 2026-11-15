@@ -6,6 +6,7 @@ import { dispatchToolCall } from "../tools/index.js";
 import { displayPath, resolveUserPath, PathError } from "./paths.js";
 import { changeSetting } from "./settings.js";
 import { setAgentWindowHint } from "./ui.js";
+import { isExecutablePath } from "./guards.js";
 import { screenClick, screenLook } from "./screen.js";
 import type { AgentActionWire } from "../../shared/protocol.js";
 
@@ -15,7 +16,7 @@ export interface AgentActionResult {
   data?: unknown;
   // Fresh state of the screen after the action (windows / UI elements) — shown to the planner.
   observation?: { platform?: string; activeWindow?: { title: string; app?: string }; windows?: { title: string; app?: string }[]; elements?: string; notes?: string[] };
-  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite" | "click" | "screen"; target?: string };
+  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite" | "click" | "screen" | "clipboard" | "shortcut"; target?: string };
 }
 
 const MAX_READ_BYTES = 200 * 1024;
@@ -38,6 +39,9 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
     const p = resolveUserPath(str(a.args.path));
     const content = str(a.args.content);
     const mode = str(a.args.mode) || "create";
+    // Whitelist the mode: any other string used to fall through to a silent overwrite of an existing file.
+    if (mode !== "create" && mode !== "append" && mode !== "overwrite") return { ok: false, message: `Unknown write mode "${mode}" (use create, append or overwrite).` };
+    if (isExecutablePath(p)) return { ok: false, message: "I don't create programs or scripts. Pick a document type like .txt." };
     const exists = existsSync(p);
     if (exists && (await fs.stat(p)).isDirectory()) return { ok: false, message: `${displayPath(p)} is a folder.` };
     await fs.mkdir(path.dirname(p), { recursive: true });
@@ -78,6 +82,7 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
     const from = resolveUserPath(str(a.args.from));
     let to = resolveUserPath(str(a.args.to));
     if (existsSync(to) && (await fs.stat(to)).isDirectory()) to = path.join(to, path.basename(from));
+    if (isExecutablePath(to) && !isExecutablePath(from)) return { ok: false, message: "I won't turn a file into a program or script." };
     if (existsSync(to)) return { ok: false, message: `${displayPath(to)} already exists.` };
     await fs.mkdir(path.dirname(to), { recursive: true });
     await fs.rename(from, to);
@@ -105,6 +110,13 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
   async file_open(a) {
     const p = resolveUserPath(str(a.args.path));
     if (!existsSync(p)) return { ok: false, message: `${displayPath(p)} doesn't exist.` };
+    // Opening a program/script RUNS it. Refuse by type, and on Linux anything marked executable.
+    if (isExecutablePath(p)) return { ok: false, message: "I only open documents, not programs or scripts." };
+    try {
+      if (process.platform !== "win32" && (await fs.stat(p)).mode & 0o111 && !(await fs.stat(p)).isDirectory()) return { ok: false, message: "That file is marked as a program — I won't open it." };
+    } catch {
+      /* stat failed -> openPath below reports it */
+    }
     const err = await shell.openPath(p);
     if (!err) setAgentWindowHint(path.basename(p)); // editors put the file name in the window title
     return err ? { ok: false, message: `Couldn't open it: ${err}` } : { ok: true, message: `Opened ${displayPath(p)}.` };
@@ -120,7 +132,9 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
     return dispatchToolCall("open_url", { url: str(a.args.url) });
   },
 
-  async clipboard_read() {
+  async clipboard_read(a) {
+    // The clipboard often holds passwords or private text. Same rule as the original read_clipboard tool: ask first.
+    if (!a.confirmed) return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: "Read what's on your clipboard? Say yes to confirm.", kind: "clipboard", target: "clipboard" } };
     const text = clipboard.readText();
     return { ok: true, message: text ? `Clipboard has ${text.length} characters.` : "The clipboard is empty.", data: { text: text.slice(0, 20_000) } };
   },

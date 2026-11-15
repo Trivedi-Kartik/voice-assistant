@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
-import { checkWebUrl, isRiskyWebLabel, isSecretField } from "../guards.js";
+import { checkWebUrl, enterNeedsConfirmation, isRiskyWebLabel, isSecretField } from "../guards.js";
 import { collectPage, type PageElement, type PageSnapshot } from "./pageScript.js";
 import type { AgentActionWire } from "../../../shared/protocol.js";
 import type { AgentActionResult } from "../skills.js";
@@ -194,11 +194,14 @@ export async function webAction(a: AgentActionWire): Promise<AgentActionResult> 
       case "press": {
         const key = str(a.args.key);
         if (!/^[A-Za-z0-9+_ ]{1,30}$/.test(key)) return { ok: false, message: "Not a valid key name." };
-        // Enter can submit a form (buy/send) — treat it like clicking a risky button unless confirmed.
+        // Enter submits forms and SENDS chat messages (WhatsApp, comments, posts) — a label check can't see that, so Enter
+        // needs a yes unless the focused field is clearly a search/address box. Re-snapshot first: `last` can be stale.
         if (key.toLowerCase() === "enter" && !a.confirmed) {
+          await takeSnapshot(page);
           const focused = last?.elements.find((e) => e.flags.includes("focused"));
-          if (focused && (focused.risky || isRiskyWebLabel(focused.name))) {
-            return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Press Enter on "${focused.name}"? That may place an order, send or delete something. Say yes to confirm.`, kind: "click", target: focused.name } };
+          if (enterNeedsConfirmation(focused)) {
+            const target = focused?.name || "this form";
+            return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Press Enter in "${target}"? That may send a message or submit a form. Say yes to confirm.`, kind: "click", target } };
           }
         }
         await page.keyboard.press(key);

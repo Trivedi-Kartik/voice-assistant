@@ -1,5 +1,5 @@
 import { a11yAvailable, MISSING_A11Y_HINT, runA11y } from "./a11y/provider.js";
-import { isSystemPermissionDialog } from "./guards.js";
+import { isRiskyWebLabel, isSystemPermissionDialog } from "./guards.js";
 
 // Platform-neutral view of "what's on screen" built from the OS accessibility tree, and the operations on
 // it. Elements get short ids (e1, e2…) for the planner; each id maps to the helper's stateless address
@@ -132,9 +132,20 @@ async function act(node: UiNode, op: string, text?: string): Promise<{ ok: boole
   return { ok: false, message: String(r.detail ?? "That didn't work.") };
 }
 
-export async function clickElement(ref: string): Promise<{ ok: boolean; message: string }> {
+export type ClickResult = { ok: boolean; message: string; needsConfirmation?: { prompt: string; kind: "click"; target: string } };
+
+export async function clickElement(ref: string, confirmed = false): Promise<ClickResult> {
   const el = resolveElement(ref);
   if (!el.ok) return el;
+  // The planner clicks by id ("e47"), so the server can't see the label — the DEVICE resolves it and re-checks. A button
+  // named Delete/Send/Pay/Buy… needs the user's spoken yes.
+  if (!confirmed && isRiskyWebLabel(el.node.name)) {
+    return {
+      ok: false,
+      message: "Needs confirmation.",
+      needsConfirmation: { prompt: `Click "${el.node.name}"? That may send, buy or delete something. Say yes to confirm.`, kind: "click", target: el.node.name },
+    };
+  }
   const r = await act(el.node, "click");
   return r.ok ? { ok: true, message: `Clicked ${el.node.role} "${el.node.name}".` } : r;
 }

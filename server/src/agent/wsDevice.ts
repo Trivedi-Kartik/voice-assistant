@@ -23,7 +23,7 @@ const actionResultSchema = z.object({
   ok: z.boolean(),
   message: z.string().max(20_000),
   data: z.unknown().optional(),
-  needsConfirmation: z.object({ prompt: z.string().max(500), kind: z.enum(["delete", "overwrite", "click", "screen"]).optional(), target: z.string().max(500).optional() }).optional(),
+  needsConfirmation: z.object({ prompt: z.string().max(500), kind: z.enum(["delete", "overwrite", "click", "screen", "clipboard", "shortcut"]).optional(), target: z.string().max(500).optional() }).optional(),
   observation: observationSchema.optional(),
 });
 
