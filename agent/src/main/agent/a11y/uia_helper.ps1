@@ -5,7 +5,7 @@
 #   {"cmd":"focused_editable"}
 # Elements are addressed by their path of child indices from the desktop root plus expected role+name, so a stale
 # address is refused ("the window changed") instead of acting on the wrong control.
-# NOTE: written without access to a Windows machine — to be verified by running it (see docs/PC_CONTROL_PLAN.md).
+# NOTE: written without access to a Windows machine - to be verified by running it (see docs/PC_CONTROL_PLAN.md).
 param([Parameter(Mandatory = $true)][string]$Request)
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -118,9 +118,9 @@ function Snapshot($query, $framePath, [int]$maxNodes) {
 function Act($r) {
   $el = $null
   try { $el = Resolve-Path-El $r.path } catch {}
-  if (-not $el) { return @{ ok = $false; error = "stale"; detail = "That element is gone — look at the screen again." } }
-  if ($r.role -and (Role $el) -ne $r.role) { return @{ ok = $false; error = "stale"; detail = "The window changed — look at the screen again." } }
-  if ($r.name -ne $null) { $n = "" + $el.Current.Name; if ($n.Substring(0, [Math]::Min(120, $n.Length)) -ne $r.name) { return @{ ok = $false; error = "stale"; detail = "The window changed — look at the screen again." } } }
+  if (-not $el) { return @{ ok = $false; error = "stale"; detail = "That element is gone - look at the screen again." } }
+  if ($r.role -and (Role $el) -ne $r.role) { return @{ ok = $false; error = "stale"; detail = "The window changed - look at the screen again." } }
+  if ($r.name -ne $null) { $n = "" + $el.Current.Name; if ($n.Substring(0, [Math]::Min(120, $n.Length)) -ne $r.name) { return @{ ok = $false; error = "stale"; detail = "The window changed - look at the screen again." } } }
   try {
     switch ($r.op) {
       "click" {
