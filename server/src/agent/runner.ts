@@ -2,6 +2,7 @@ import { v4 as uuid } from "uuid";
 import type { ChatMessage } from "../llm.js";
 import { AGENT_ACTION_NAMES } from "./actions.js";
 import { classifyAction } from "./safety.js";
+import { confirmPrompt } from "./confirmPrompts.js";
 import { buildAgentSystemPrompt, type Planner } from "./planner.js";
 import type { ActionResult, AgentAction, AgentDevice, AgentOutcome, AgentStatus, Observation } from "./types.js";
 
@@ -157,14 +158,18 @@ export class AgentRunner {
       if (this.cancelled) return this.end({ kind: "cancelled" });
 
       if (decision.kind === "text") {
-        // The model answered in prose instead of calling a function: nudge once, then accept it as the summary.
-        if (!this.nudged && decision.assistant.content.trim()) {
+        // The model answered in prose instead of calling a function: nudge once, then accept non-empty prose
+        // as the summary. An EMPTY reply is never treated as success — that produced a false "Done." in the
+        // eval for a task that hadn't been done.
+        const content = decision.assistant.content.trim();
+        if (!this.nudged) {
           this.nudged = true;
-          this.push(decision.assistant);
+          if (content) this.push(decision.assistant);
           this.push({ role: "user", content: "Reply by calling exactly one function (use done if the goal is complete)." });
           continue;
         }
-        return this.end({ kind: "done", summary: decision.assistant.content.trim() || "Done." });
+        if (!content) return this.end({ kind: "failed", reason: "I couldn't finish that. Please try again." });
+        return this.end({ kind: "done", summary: content });
       }
 
       this.steps++;
@@ -184,7 +189,7 @@ export class AgentRunner {
         return { kind: "ask", question: text("question") || "Could you tell me a bit more?" };
       }
 
-      const safety = classifyAction(action);
+      const safety = classifyAction(action, undefined, this.opts.language);
       if (safety.level === "block") {
         this.push({ role: "tool", tool_call_id: toolCallId, content: JSON.stringify({ ok: false, message: safety.reason }) });
         continue;
@@ -213,9 +218,11 @@ export class AgentRunner {
     if (this.cancelled) return this.end({ kind: "cancelled" });
 
     if (result.needsConfirmation && !action.confirmed) {
+      const nc = result.needsConfirmation;
+      const prompt = nc.kind && nc.target ? confirmPrompt(nc.kind, nc.target, this.opts.language) : nc.prompt;
       this.pending = { type: "confirm", toolCallId, action };
-      this.opts.onStatus?.({ state: "waiting", text: result.needsConfirmation.prompt });
-      return { kind: "confirm", prompt: result.needsConfirmation.prompt };
+      this.opts.onStatus?.({ state: "waiting", text: prompt });
+      return { kind: "confirm", prompt };
     }
 
     if (result.ok && action.expect && Object.keys(action.expect).length > 0) {

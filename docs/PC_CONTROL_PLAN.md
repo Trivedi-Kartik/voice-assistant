@@ -1,6 +1,6 @@
 # Karvix 2 — Full PC control by voice + human voice (plan)
 
-Status: **approved 2026-11-14 — Phase 0 implemented (pending a real Google key test); Phase 1 next.** Supersedes the "Phase 4 Browser Agent" and
+Status: **approved 2026-11-14 — Phase 0 (voice) done; Phase 1 (agent kernel v2) done 2026-11-15; Phase 2 next.** Supersedes the "Phase 4 Browser Agent" and
 "Phase 5 Computer Use hardening" entries in `IMPLEMENTATION_ROADMAP.md` once approved.
 
 Goal: the user can operate their whole PC by voice — open/edit/save files, use any app, shop online,

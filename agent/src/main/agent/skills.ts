@@ -10,7 +10,7 @@ export interface AgentActionResult {
   ok: boolean;
   message: string;
   data?: unknown;
-  needsConfirmation?: { prompt: string };
+  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite"; target?: string };
 }
 
 const MAX_READ_BYTES = 200 * 1024;
@@ -48,7 +48,7 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
     }
     if (mode === "create" && exists) return { ok: false, message: `${displayPath(p)} already exists — use append, or overwrite to replace it.` };
     if (mode === "overwrite" && exists && !a.confirmed) {
-      return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Replace everything in ${displayPath(p)}? Say yes to confirm.` } };
+      return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Replace everything in ${displayPath(p)}? Say yes to confirm.`, kind: "overwrite", target: displayPath(p) } };
     }
     await fs.writeFile(p, content, "utf8");
     return { ok: true, message: `${exists ? "Replaced" : "Created"} ${displayPath(p)}.` };
@@ -92,7 +92,7 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
   async file_delete(a) {
     const p = resolveUserPath(str(a.args.path));
     if (!existsSync(p)) return { ok: false, message: `${displayPath(p)} doesn't exist.` };
-    if (!a.confirmed) return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Move ${displayPath(p)} to the Trash? Say yes to confirm.` } };
+    if (!a.confirmed) return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Move ${displayPath(p)} to the Trash? Say yes to confirm.`, kind: "delete", target: displayPath(p) } };
     await shell.trashItem(p); // recoverable from the Trash/Recycle Bin — never a permanent delete
     return { ok: true, message: `Moved ${displayPath(p)} to the Trash.` };
   },

@@ -1,4 +1,5 @@
 import type { AgentAction } from "./types.js";
+import { confirmPrompt } from "./confirmPrompts.js";
 
 // Deterministic safety gate (plan §3.5). It never trusts the model's own judgement of risk: anything
 // that deletes, sends, buys, submits or could expose credentials stops for an explicit spoken "yes",
@@ -16,21 +17,21 @@ function s(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-export function classifyAction(action: AgentAction, elementLabel?: string): SafetyDecision {
+export function classifyAction(action: AgentAction, elementLabel?: string, language = "en"): SafetyDecision {
   if (action.confirmed) return { level: "allow" };
   const a = action.args;
   switch (action.name) {
     case "file_delete":
-      return { level: "confirm", prompt: `Move ${s(a.path)} to the Trash? Say yes to confirm.` };
+      return { level: "confirm", prompt: confirmPrompt("delete", s(a.path), language) };
     case "click": {
       const label = elementLabel ?? s(a.element);
-      if (RISKY_ELEMENT.test(label)) return { level: "confirm", prompt: `Click "${label}"? That may send, buy or delete something. Say yes to confirm.` };
+      if (RISKY_ELEMENT.test(label)) return { level: "confirm", prompt: confirmPrompt("click", label, language) };
       return { level: "allow" };
     }
     case "hotkey": {
       const keys = Array.isArray(a.keys) ? a.keys.map((k) => String(k).toLowerCase()) : [];
       // Delete-ish shortcuts on a selection.
-      if (keys.includes("delete") && keys.includes("shift")) return { level: "confirm", prompt: "Permanently delete the selected item? Say yes to confirm." };
+      if (keys.includes("delete") && keys.includes("shift")) return { level: "confirm", prompt: confirmPrompt("shift_delete", "", language) };
       return { level: "allow" };
     }
     case "type_text":

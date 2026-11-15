@@ -4,6 +4,33 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-15 — Phase 1 complete: Karvix 2 PC agent kernel (files, folders, apps, clipboard — by voice)
+
+Voice tasks on the user's computer now run through a new agent engine (`server/src/agent/`, device side
+`agent/src/main/agent/`), offered as `pc_task` to clients announcing `pc_agent`; older installed apps keep the
+old screenshot-clicking automation. One planner call (Groq) chooses one typed action per step; a runner
+enforces step/time/failure budgets, verifies results, pauses to ask the user or to confirm a risky step across
+voice turns, supports cancel, and keeps its context bounded. A deterministic safety gate (server) plus
+client-side re-checks (home-folder sandbox, no hidden files, delete -> Trash only after a spoken yes, overwrite
+asks first, never types into password/payment fields) never trust the model's own risk judgement.
+Confirmation questions are localized in all 8 languages. Per-user daily PC-task cap (`PC_TASK_DAILY_CAP`,
+default 5; users with their own Groq key are exempt) protects the shared free Groq key (~200K tokens/day).
+
+Measured, not assumed:
+- 16-task eval (`agent/eval`, real Groq planner + real desktop skills in a sandbox home): **15/16 on
+  2026-11-15**, the one miss being a false "Done." on an empty model reply — now treated as failure after a nudge
+  (test added). Earlier runs exposed and fixed: a 3,560-token-per-call prompt that tripped Groq's 8K tokens/min
+  limit (now ~870), gpt-oss ending tasks in prose / calling a non-existent tool (rejected generation is now
+  recovered as the answer), move/copy args, a missing mkdir action.
+- True end-to-end voice test (`agent/eval/e2e-voice.js`): the app's own Kokoro voice speaks the command,
+  recorded as webm/opus, sent over the real WebSocket to a local server -> Groq Whisper -> pc_task -> desktop
+  agent code: **3/3** (create a file; delete asks for confirmation; a spoken "yes" deletes it).
+- Server 111 tests passing; agent typechecks and builds.
+
+Not covered yet: clicking/typing inside apps (Phases 2-4), the progress/Stop panel was not visually checked in
+the running app, Windows is untested, and the server + a new desktop release must be deployed (server first)
+before users get any of this.
+
 ## 2026-11-14 — Natural voice, zero configuration (local Kokoro); Google voice now optional
 
 No account/key setup wanted, so the default voice is now **local**: Kokoro-82M v1.0 (Apache-2.0) run by

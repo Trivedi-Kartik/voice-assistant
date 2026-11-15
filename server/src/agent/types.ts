@@ -18,7 +18,8 @@ export interface ActionResult {
   data?: unknown;
   // The client's own safety gate refused to run this without explicit confirmation (e.g. overwriting
   // an existing file). `prompt` is what to ask the user.
-  needsConfirmation?: { prompt: string };
+  // kind/target let the server phrase the question in the user's language; prompt is the client's English fallback.
+  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite"; target?: string };
   observation?: Observation; // fresh state after the action, when cheap to include
 }
 

@@ -183,6 +183,14 @@ describe("AgentRunner", () => {
     await expect(r.start()).resolves.toEqual({ kind: "done", summary: "All done." });
   });
 
+  it("never reports success for an empty reply (regression: false 'Done.' in the eval)", async () => {
+    const { planner } = scripted([act("file_list", { path: "~/Downloads" }), text(""), text("")]);
+    const { dev } = device();
+    const { r } = runner(planner, dev);
+    await expect(r.start()).resolves.toMatchObject({ kind: "failed" });
+    expect(planner.next).toHaveBeenCalledTimes(3); // the empty reply got a nudge first
+  });
+
   it("keeps the planner context bounded without orphaning tool results", async () => {
     const decisions = [...Array.from({ length: 30 }, () => act("observe")), act("done", { summary: "ok" })];
     const { planner, seen } = scripted(decisions);
@@ -254,5 +262,25 @@ describe("recoverRejectedGeneration (Groq rejected the model's output)", () => {
     const { dev } = device();
     const { r } = runner(planner, dev);
     await expect(r.start()).resolves.toEqual({ kind: "done", summary: "Todo list updated." });
+  });
+});
+
+describe("localized confirmation prompts", () => {
+  it("asks in the user's language for server- and client-detected risks", async () => {
+    const { planner } = scripted([act("file_delete", { path: "~/old.txt" })]);
+    const { dev } = device();
+    const r = new AgentRunner({ goal: "x", language: "hi", device: dev, planner });
+    const out = await r.start();
+    expect(out).toMatchObject({ kind: "confirm" });
+    expect((out as { prompt: string }).prompt).toContain("ट्रैश");
+
+    const p2 = scripted([act("file_write", { path: "~/a.txt", content: "x", mode: "overwrite" })]);
+    const d2 = device({ file_write: () => ({ ok: false, message: "exists", needsConfirmation: { prompt: "Replace ~/a.txt?", kind: "overwrite", target: "~/a.txt" } }) });
+    const r2 = new AgentRunner({ goal: "x", language: "es", device: d2.dev, planner: p2.planner });
+    expect(await r2.start()).toEqual({ kind: "confirm", prompt: "¿Reemplazo todo el contenido de ~/a.txt? Di sí para confirmar." });
+  });
+  it("falls back to English for unknown languages and to the client prompt when no kind is given", async () => {
+    const { confirmPrompt } = await import("./confirmPrompts.js");
+    expect(confirmPrompt("delete", "~/x", "zz")).toBe("Move ~/x to the Trash? Say yes to confirm.");
   });
 });
