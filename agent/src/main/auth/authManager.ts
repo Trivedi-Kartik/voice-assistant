@@ -189,6 +189,21 @@ class AuthManager {
     return data.description;
   }
 
+  // Vision fallback: where on this screenshot is <target>? Returns a position as a fraction of the image, or null.
+  async locateOnScreen(imageDataUri: string, target: string): Promise<{ x: number; y: number } | null> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/vision/locate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.session.accessToken}` },
+      body: JSON.stringify({ imageDataUri, target }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(`locate_failed_${res.status}_${body.error ?? "unknown"}`);
+    }
+    return ((await res.json()) as { location: { x: number; y: number } | null }).location;
+  }
+
   private async postCredentials(path: string, email: string, password: string): Promise<TokenResponse> {
     const res = await fetch(`${SERVER_HTTP_URL}${path}`, {
       method: "POST",

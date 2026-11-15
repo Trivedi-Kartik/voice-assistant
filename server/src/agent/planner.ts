@@ -29,6 +29,7 @@ export function buildAgentSystemPrompt(language: string, platform?: string): str
     "- WhatsApp: use web with https://web.whatsapp.com (the user logs in there once). With a number: open web.whatsapp.com/send?phone=NUMBER&text=MESSAGE; otherwise search the chat by name. The Send click needs the user's yes (automatic). Never use unofficial WhatsApp tools.",
     "- Cookie/consent banners: pick the most private option (Reject all / Decline / Necessary only), never Accept all.",
     "- Open only apps the goal needs. If something fails, don't wander off opening other apps — retry once, then report it.",
+    "- screen look only as a last resort when observe shows no usable controls (read-only); the user is asked once per task.",
     "- Never type into terminals or shells.",
     "- Ambiguous or missing info: ask_user one short question. Don't guess.",
     "- Never type passwords, codes or payment details; ask the user to do it.",

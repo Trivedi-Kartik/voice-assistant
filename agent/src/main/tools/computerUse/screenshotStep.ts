@@ -1,4 +1,5 @@
-import { desktopCapturer, screen } from "electron";
+import { desktopCapturer, nativeImage, screen } from "electron";
+import { portalScreenshot } from "../../agent/a11y/portal.js";
 
 // Factored out of takeScreenshot.ts (same capture settings) — the automation
 // loop needs a fresh screenshot after every action, not just once. Primary
@@ -20,7 +21,23 @@ export interface ScreenshotCapture {
   scale: number;
 }
 
+const isWayland = () => process.platform === "linux" && (process.env.XDG_SESSION_TYPE === "wayland" || Boolean(process.env.WAYLAND_DISPLAY));
+
+// Wayland: Electron's desktopCapturer needs a screen-picker dialog every single time (the reason screenshots "didn't
+// work" there). The ScreenCast portal grants the screen once; frames then arrive in memory — no file is ever written.
+async function captureViaPortal(): Promise<ScreenshotCapture> {
+  const shot = await portalScreenshot();
+  if (!shot.ok) throw new Error(shot.message);
+  const img = nativeImage.createFromBuffer(shot.jpeg);
+  if (img.isEmpty()) throw new Error("empty_screenshot");
+  const { width } = img.getSize();
+  const shouldResize = width > MAX_WIDTH;
+  const resized = shouldResize ? img.resize({ width: MAX_WIDTH }) : img;
+  return { dataUri: `data:image/jpeg;base64,${resized.toJPEG(JPEG_QUALITY).toString("base64")}`, scale: shouldResize ? width / MAX_WIDTH : 1 };
+}
+
 export async function captureScreenshotDataUri(): Promise<ScreenshotCapture> {
+  if (isWayland()) return captureViaPortal();
   const display = screen.getPrimaryDisplay();
   const sources = await desktopCapturer.getSources({
     types: ["screen"],

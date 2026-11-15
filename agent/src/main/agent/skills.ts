@@ -6,6 +6,7 @@ import { dispatchToolCall } from "../tools/index.js";
 import { displayPath, resolveUserPath, PathError } from "./paths.js";
 import { changeSetting } from "./settings.js";
 import { setAgentWindowHint } from "./ui.js";
+import { screenClick, screenLook } from "./screen.js";
 import type { AgentActionWire } from "../../shared/protocol.js";
 
 export interface AgentActionResult {
@@ -14,7 +15,7 @@ export interface AgentActionResult {
   data?: unknown;
   // Fresh state of the screen after the action (windows / UI elements) — shown to the planner.
   observation?: { platform?: string; activeWindow?: { title: string; app?: string }; windows?: { title: string; app?: string }[]; elements?: string; notes?: string[] };
-  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite" | "click"; target?: string };
+  needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite" | "click" | "screen"; target?: string };
 }
 
 const MAX_READ_BYTES = 200 * 1024;
@@ -137,6 +138,15 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
       return { ok: false, message: "Needs confirmation.", needsConfirmation: { prompt: `Change ${setting.replace(/_/g, " ")} to ${value}? Say yes to confirm.` } };
     }
     return changeSetting(setting, value);
+  },
+
+  // Vision fallback (screen): the server only sets args.consented after the user said yes to "look at your screen and use
+  // the mouse" for this task; the device refuses without it.
+  async screen_look(a) {
+    return screenLook(a.args.consented === true);
+  },
+  async screen_click(a) {
+    return screenClick(str(a.args.target), a.args.consented === true, a.confirmed === true);
   },
 
   async wait(a) {

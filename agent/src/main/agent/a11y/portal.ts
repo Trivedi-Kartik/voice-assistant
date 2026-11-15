@@ -20,11 +20,12 @@ function tokenFile(): string {
 }
 
 const START_TIMEOUT_MS = 85_000; // the user may need a moment to read the dialog; the device act timeout is 90 s
-const CALL_TIMEOUT_MS = 20_000;
+const CALL_TIMEOUT_MS = 20_000; // (a frame is requested with its own 20 s budget above)
 const DECLINE_COOLDOWN_MS = 10 * 60_000;
 
 let proc: ChildProcessWithoutNullStreams | null = null;
 let started = false;
+let devicesGranted = 0; // bitmask the user actually allowed: 1 = keyboard, 2 = pointer (0 = screen only)
 let declinedAt = 0;
 let queue: Promise<unknown> = Promise.resolve();
 let pending: ((line: string) => void) | null = null;
@@ -86,7 +87,16 @@ async function ensureStarted(): Promise<{ ok: true } | { ok: false; message: str
     return { ok: false, message: r.error === "denied" ? "Keyboard control was declined in the system dialog." : r.error === "timeout" ? "The keyboard-control permission dialog wasn't answered." : "Keyboard control isn't available on this desktop." };
   }
   started = true;
-  if (r.restore_token) {
+  devicesGranted = Number((r as { devices?: number }).devices ?? 0);
+  if (devicesGranted === 0) {
+    // GNOME's dialog has an "Allow Remote Interaction" checkbox that is UNTICKED by default: the user shared the screen
+    // but gave no keyboard/mouse. Don't remember that incomplete choice (or they'd never be asked again).
+    try {
+      fs.rmSync(tokenFile(), { force: true });
+    } catch {
+      /* ignore */
+    }
+  } else if (r.restore_token) {
     try {
       fs.writeFileSync(tokenFile(), r.restore_token, { mode: 0o600 }); // restore tokens are single-use: keep the newest
     } catch {
@@ -96,22 +106,52 @@ async function ensureStarted(): Promise<{ ok: true } | { ok: false; message: str
   return { ok: true };
 }
 
-export async function portalKeys(keys: string[]): Promise<{ ok: boolean; message: string }> {
+// Keyboard/mouse need the interaction permission; screenshots don't.
+async function ensureInteraction(): Promise<{ ok: true } | { ok: false; message: string }> {
   const s = await ensureStarted();
+  if (!s.ok) return s;
+  if (devicesGranted === 0) {
+    stopPortal(); // end this screen-only session so the next try shows the dialog again
+    return { ok: false, message: "I can see the screen but wasn't allowed to use the keyboard and mouse. Next time, tick \"Allow Remote Interaction\" in the permission dialog, then ask me again." };
+  }
+  return { ok: true };
+}
+
+export async function portalKeys(keys: string[]): Promise<{ ok: boolean; message: string }> {
+  const s = await ensureInteraction();
   if (!s.ok) return s;
   const r = await call({ cmd: "keys", keys }, CALL_TIMEOUT_MS);
   return r.ok ? { ok: true, message: `Pressed ${keys.join("+")}.` } : { ok: false, message: `Couldn't press ${keys.join("+")} (${r.detail ?? r.error}).` };
 }
 
 export async function portalType(text: string): Promise<{ ok: boolean; message: string }> {
-  const s = await ensureStarted();
+  const s = await ensureInteraction();
   if (!s.ok) return s;
   const r = await call({ cmd: "text", text }, CALL_TIMEOUT_MS + text.length * 30);
   return r.ok ? { ok: true, message: "Typed the text." } : { ok: false, message: `Couldn't type (${r.detail ?? r.error}).` };
+}
+
+export async function portalClickAt(fx: number, fy: number, width: number, height: number): Promise<{ ok: boolean; message: string }> {
+  const s = await ensureInteraction();
+  if (!s.ok) return s;
+  const r = await call({ cmd: "click_at", fx, fy, width, height }, CALL_TIMEOUT_MS);
+  return r.ok ? { ok: true, message: "Clicked." } : { ok: false, message: `Couldn't click (${r.detail ?? r.error}).` };
+}
+
+// One screen frame (JPEG bytes) through the ScreenCast portal — the sanctioned way on Wayland. Electron's desktopCapturer
+// needs a picker dialog every time, GNOME blocks the direct screenshot D-Bus calls, and the screenshot portal refuses
+// non-interactive use. The first use shows the system's share dialog once; the restore token silences it afterwards.
+export async function portalScreenshot(): Promise<{ ok: true; jpeg: Buffer } | { ok: false; message: string }> {
+  const s = await ensureStarted();
+  if (!s.ok) return s;
+  const r = (await call({ cmd: "shot" }, 20_000)) as { ok: boolean; error?: string; detail?: string; jpeg_b64?: string };
+  if (!r.ok || !r.jpeg_b64) return { ok: false, message: r.error === "no_screen" ? "Screen sharing wasn't allowed in the system dialog." : `I couldn't capture the screen (${r.detail ?? r.error}).` };
+  return { ok: true, jpeg: Buffer.from(r.jpeg_b64, "base64") };
 }
 
 export function stopPortal(): void {
   proc?.kill();
   proc = null;
   started = false;
+  devicesGranted = 0;
 }

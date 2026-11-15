@@ -47,6 +47,8 @@ function describe(action: AgentAction): string {
     case "focus_window": return `Switching to ${v("title")}`;
     case "close_window": return `Closing ${v("title")}`;
     case "wait": return "Waiting";
+    case "screen_look": return "Looking at the screen";
+    case "screen_click": return `Clicking ${v("target")}`;
     case "web_open": return `Opening ${v("url")}`;
     case "web_click": return `Clicking ${v("element")} on the page`;
     case "web_fill": return `Filling in ${v("element")}`;
@@ -59,7 +61,8 @@ function describe(action: AgentAction): string {
 
 type Pending =
   | { type: "ask"; toolCallId: string }
-  | { type: "confirm"; toolCallId: string; action: AgentAction };
+  // consentOnly: the user's yes grants *screen use for this task* — it must NOT double as agreement to a risky click.
+  | { type: "confirm"; toolCallId: string; action: AgentAction; consentOnly?: boolean };
 
 export interface AgentRunnerOptions {
   id?: string;
@@ -86,6 +89,8 @@ export class AgentRunner {
   private startedAt = 0;
   private cancelled = false;
   private pending?: Pending;
+  // The user agreed (once, by voice) that this task may look at their screen and use the mouse. Per task, never persisted.
+  private screenConsent = false;
 
   constructor(private readonly opts: AgentRunnerOptions) {
     this.id = opts.id ?? uuid();
@@ -125,12 +130,22 @@ export class AgentRunner {
     const p = this.pending;
     if (!p || p.type !== "confirm") return this.loop();
     this.pending = undefined;
+    if (p.consentOnly && yes) {
+      this.screenConsent = true;
+      const outcome = await this.execute(this.withConsent(p.action), p.toolCallId); // runs; a risky click still asks separately
+      return outcome ?? this.loop();
+    }
     if (!yes) {
       this.push({ role: "tool", tool_call_id: p.toolCallId, content: JSON.stringify({ ok: false, message: "The user said NO. Do not do this, and do not ask them to confirm it again. Unless the rest of the goal can still be done without it, call done now and tell them it was not done." }) });
       return this.loop();
     }
-    const outcome = await this.execute({ ...p.action, confirmed: true }, p.toolCallId);
+    const outcome = await this.execute(this.withConsent({ ...p.action, confirmed: true }), p.toolCallId);
     return outcome ?? this.loop();
+  }
+
+  // Screen actions carry the consent to the device (which refuses without it).
+  private withConsent(action: AgentAction): AgentAction {
+    return action.name.startsWith("screen_") && this.screenConsent ? { ...action, args: { ...action.args, consented: true } } : action;
   }
 
   private end(outcome: AgentOutcome): AgentOutcome {
@@ -213,6 +228,12 @@ export class AgentRunner {
         return { kind: "ask", question: text("question") || "Could you tell me a bit more?" };
       }
 
+      if (action.name.startsWith("screen_") && !this.screenConsent) {
+        const prompt = confirmPrompt("screen", "", this.opts.language);
+        this.pending = { type: "confirm", toolCallId, action, consentOnly: true };
+        this.opts.onStatus?.({ state: "waiting", text: prompt });
+        return { kind: "confirm", prompt };
+      }
       const safety = classifyAction(action, undefined, this.opts.language);
       if (safety.level === "block") {
         this.push({ role: "tool", tool_call_id: toolCallId, content: JSON.stringify({ ok: false, message: safety.reason }) });
@@ -224,7 +245,7 @@ export class AgentRunner {
         return { kind: "confirm", prompt: safety.prompt };
       }
 
-      const outcome = await this.execute(action, toolCallId);
+      const outcome = await this.execute(this.withConsent(action), toolCallId);
       if (outcome) return outcome;
     }
   }

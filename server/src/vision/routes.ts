@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth, type AuthedRequest } from "../auth/middleware.js";
 import { resolveGroqKey } from "../groqKey.js";
 import { checkAndConsumeTurn } from "../rateLimit.js";
-import { describeImage } from "../vision.js";
+import { describeImage, locateOnScreen } from "../vision.js";
 import { asyncHandler } from "../asyncHandler.js";
 
 // Deliberately its own route, not routed through the WS tool_call protocol
@@ -43,6 +43,37 @@ visionRouter.post(
       res.json({ description });
     } catch (err) {
       console.error("[vision] describe failed", err);
+      res.status(502).json({ error: "vision_failed" });
+    }
+  })
+);
+
+// Where is <target> on this screenshot? Same auth, same daily-turn gate, and the same "screenshot is never stored"
+// rule as /describe.
+const locateSchema = z.object({
+  imageDataUri: z.string().startsWith("data:image/").max(12 * 1024 * 1024),
+  target: z.string().min(2).max(200),
+});
+
+visionRouter.post(
+  "/locate",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const parsed = locateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_request" });
+      return;
+    }
+    const { apiKey, isByok } = await resolveGroqKey(req.auth!.userId);
+    const turnCheck = await checkAndConsumeTurn(req.auth!.userId, isByok);
+    if (!turnCheck.allowed) {
+      res.status(429).json({ error: "rate_limited" });
+      return;
+    }
+    try {
+      res.json({ location: await locateOnScreen(apiKey, parsed.data.imageDataUri, parsed.data.target) });
+    } catch (err) {
+      console.error("[vision] locate failed", err instanceof Error ? err.message : err);
       res.status(502).json({ error: "vision_failed" });
     }
   })

@@ -4,6 +4,26 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-15 — Vision fallback: screenshots fixed on Wayland; vision CLICKING disabled (measured unreliable)
+
+**Screenshots now work on Wayland** (the original complaint): frames come from the ScreenCast portal through GStreamer, in
+memory only (never written to disk), in the same single permission session as keyboard + mouse. The GNOME dialog has an
+"Allow Remote Interaction" checkbox that is unticked by default — the app now detects a screen-only grant, tells the user
+what to tick, and does not remember the incomplete choice. A `screen` action (look) describes the screen via the vision
+model; the user is asked ONCE per task, in their language, before any screen use (and that yes never doubles as approval of
+a Buy/Send click).
+
+**Vision clicking (`screen click`) is OFF unless `VISION_CLICK_ENABLED=1`.** Measured on a synthetic screen with known
+button positions: of three answers, one landed inside the 96x66 button, the others missed by 77 px and 348 px; on the real
+run the "7" click landed between other keys. A wrong click in someone's real apps is harm, so only `look` is offered.
+Accessibility (Linux/Windows) and the web DOM do the clicking. To revisit: a grid/zoom two-stage locate, or a model
+actually trained for grounding (user-selectable provider), measured on the same synthetic harness first.
+
+**Privacy lesson from testing:** the live vision tests captured the developer's REAL screen, which had a `.env` file open
+with credentials visible, and sent those screenshots to Groq's vision model. Anything on screen goes to the model — the
+once-per-task consent exists for this reason; the product copy says screenshots are sent to an AI model. The developer
+was told to treat the visible credentials (Neon, Upstash, the Groq key) as exposed and rotate them.
+
 ## 2026-11-15 — Phases 2-4 build-out: settings, web, Wayland keyboard, Windows, bring-your-own model
 
 **Deploy order matters (database):** `server/prisma/migrations/20261115120000_add_planner_model` adds three nullable

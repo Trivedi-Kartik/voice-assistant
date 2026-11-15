@@ -336,3 +336,51 @@ describe("GroqPlanner plain-text JSON replies", () => {
     vi.doUnmock("../llm.js");
   });
 });
+
+
+describe("screen (vision fallback) consent", () => {
+  it("asks ONCE per task, in the user's language, before any screen use — then not again", async () => {
+    const { planner } = scripted([act("screen_look"), act("screen_click", { target: "the Play button" }), act("done", { summary: "ok" })]);
+    const { dev, calls } = device();
+    const r = new AgentRunner({ goal: "x", language: "es", device: dev, planner });
+    const first = await r.start();
+    expect(first).toMatchObject({ kind: "confirm" });
+    expect((first as { prompt: string }).prompt).toContain("pantalla");
+    expect(calls).toHaveLength(0); // nothing touched the screen yet
+    await expect(r.resumeWithConfirmation(true)).resolves.toMatchObject({ kind: "done" });
+    expect(calls.map((c) => c.name)).toEqual(["screen_look", "screen_click"]); // second one did not ask again
+    expect(calls.every((c) => c.args.consented === true)).toBe(true); // consent travels to the device
+  });
+  it("a no means the screen is never used", async () => {
+    const { planner } = scripted([act("screen_look"), act("done", { summary: "ok" })]);
+    const { dev, calls } = device();
+    const r = new AgentRunner({ goal: "x", language: "en", device: dev, planner });
+    await r.start();
+    await r.resumeWithConfirmation(false);
+    expect(calls).toHaveLength(0);
+  });
+  it("the screen yes does NOT approve a risky click: the device's own confirmation still stops it", async () => {
+    const { planner } = scripted([act("screen_click", { target: "Place order button" }), act("done", { summary: "ok" })]);
+    const { dev, calls } = device({
+      screen_click: (a) => (a.confirmed ? { ok: true, message: "clicked" } : { ok: false, message: "n", needsConfirmation: { prompt: "Click it?", kind: "click", target: "Place order button" } }),
+    });
+    const r = new AgentRunner({ goal: "x", language: "en", device: dev, planner });
+    expect(await r.start()).toMatchObject({ kind: "confirm" }); // 1) screen consent
+    const second = await r.resumeWithConfirmation(true);
+    expect(second).toMatchObject({ kind: "confirm" }); // 2) the click itself still needs its own yes
+    expect(calls.map((c) => c.confirmed ?? false)).toEqual([false]);
+    await r.resumeWithConfirmation(true);
+    expect(calls.map((c) => c.confirmed ?? false)).toEqual([false, true]);
+  });
+});
+
+
+describe("vision clicking is off by default (measured unreliable)", () => {
+  it("the planner is offered screen look only, never click", async () => {
+    const { AGENT_ACTION_SCHEMAS, VISION_CLICK_ENABLED } = await import("./actions.js");
+    expect(VISION_CLICK_ENABLED).toBe(false);
+    const screen = AGENT_ACTION_SCHEMAS.find((x) => x.function.name === "screen")!;
+    expect(screen.function.parameters.properties.op.enum).toEqual(["look"]);
+    expect(screen.function.parameters.properties).not.toHaveProperty("target");
+  });
+});
