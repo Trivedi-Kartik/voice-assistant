@@ -22,6 +22,8 @@ import { initAutoUpdater } from "./updater/autoUpdate.js";
 import { applyContentSecurityPolicy } from "./csp.js";
 import { neuralVoice } from "./voice/neuralVoice.js";
 import { handleAgentRequest, handleAgentStatus, resetAgentTask } from "./agent/agentHost.js";
+import { closeBrowser } from "./agent/browser/browser.js";
+import { stopPortal } from "./agent/a11y/portal.js";
 import type { ServerMessage } from "../shared/protocol.js";
 
 let win: BrowserWindow;
@@ -155,6 +157,12 @@ app.whenReady().then(async () => {
       return;
     }
   }
+});
+
+// Don't leave the agent's browser or the Wayland keyboard session running after Karvix quits.
+app.on("before-quit", () => {
+  stopPortal();
+  void closeBrowser();
 });
 
 app.on("window-all-closed", () => {

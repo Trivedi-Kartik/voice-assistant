@@ -5,6 +5,7 @@ import path from "node:path";
 import { dispatchToolCall } from "../tools/index.js";
 import { displayPath, resolveUserPath, PathError } from "./paths.js";
 import { changeSetting } from "./settings.js";
+import { setAgentWindowHint } from "./ui.js";
 import type { AgentActionWire } from "../../shared/protocol.js";
 
 export interface AgentActionResult {
@@ -104,12 +105,15 @@ export const SKILLS: Record<string, (a: AgentActionWire) => Promise<AgentActionR
     const p = resolveUserPath(str(a.args.path));
     if (!existsSync(p)) return { ok: false, message: `${displayPath(p)} doesn't exist.` };
     const err = await shell.openPath(p);
+    if (!err) setAgentWindowHint(path.basename(p)); // editors put the file name in the window title
     return err ? { ok: false, message: `Couldn't open it: ${err}` } : { ok: true, message: `Opened ${displayPath(p)}.` };
   },
 
   // Reuse the existing, already-hardened tools (app whitelist/registry, http(s)-only URLs).
   async open_app(a) {
-    return dispatchToolCall("open_app", { app: str(a.args.app) });
+    const r = await dispatchToolCall("open_app", { app: str(a.args.app) });
+    if (r.ok) setAgentWindowHint(str(a.args.app));
+    return r;
   },
   async open_url(a) {
     return dispatchToolCall("open_url", { url: str(a.args.url) });

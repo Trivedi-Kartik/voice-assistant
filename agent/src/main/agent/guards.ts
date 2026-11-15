@@ -25,6 +25,16 @@ export function humanTextFromRejected(rejected: string): string {
   }
 }
 
+// System permission / authentication dialogs (screen-sharing and remote-control consent, admin password prompts,
+// keyring unlock). Only the human may answer those — the agent never clicks or types into them, otherwise it could
+// grant itself access.
+const SYSTEM_DIALOG_APP = /^(xdg-desktop-portal(-gnome|-gtk|-kde)?|polkit-gnome-authentication-agent-1|polkit-kde-authentication-agent-1|gcr-prompter|consent\.exe|credentialuibroker\.exe)$/i;
+const SYSTEM_DIALOG_TITLE = /\b(authentication required|authenticate|unlock (login )?keyring|allow remote (interaction|desktop|control)|screen sharing|share (your )?screen|user account control)\b/i;
+
+export function isSystemPermissionDialog(app?: string, title?: string): boolean {
+  return SYSTEM_DIALOG_APP.test((app ?? "").trim()) || SYSTEM_DIALOG_TITLE.test(title ?? "");
+}
+
 // ---- Web safety (pure, unit-tested) ----
 
 // Buttons/links whose click has real-world consequences. "Add to cart" and "Checkout" are deliberately NOT here:

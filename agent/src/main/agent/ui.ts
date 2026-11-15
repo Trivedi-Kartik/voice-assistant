@@ -1,4 +1,5 @@
 import { atspiAvailable, runAtspi } from "./a11y/atspi.js";
+import { isSystemPermissionDialog } from "./guards.js";
 
 // Platform-neutral view of "what's on screen" built from the OS accessibility tree, and the operations on
 // it. Elements get short ids (e1, e2…) for the planner; each id maps to the helper's stateless address
@@ -20,6 +21,14 @@ interface Snapshot {
 }
 
 let last: Snapshot | null = null;
+
+// What the agent itself just opened (app name or file name). On Wayland a freshly launched window often does NOT get
+// focus (GNOME's focus-stealing prevention), so "the active window" is still the user's — in testing, observe after
+// opening the Calculator read the user's code editor. Default looks go to the agent's own window instead.
+let agentWindowHint = "";
+export function setAgentWindowHint(hint: string): void {
+  agentWindowHint = hint.trim();
+}
 
 // Element ids must stay the SAME across looks. The first version numbered elements 1..N per snapshot, so after
 // every click the buttons were renumbered and the model clicked the wrong keys (a 12x12 calculator task clicked
@@ -68,7 +77,15 @@ export async function uiAvailable(): Promise<boolean> {
 
 export async function takeSnapshot(windowQuery = "", framePath?: string): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
   if (process.platform !== "linux") return { ok: false, message: "Reading app windows isn't available on this system yet." };
-  const r = await runAtspi({ cmd: "snapshot", window: windowQuery, frame_path: framePath, max_nodes: 300 });
+  let query = windowQuery;
+  if (!query && !framePath && agentWindowHint) {
+    // Only use the hint if such a window actually exists; otherwise fall back to the active window.
+    const w = await runAtspi({ cmd: "windows" });
+    const hint = agentWindowHint.toLowerCase();
+    const has = w.ok && (w.windows as { title: string; app: string }[]).some((x) => x.title && (x.title.toLowerCase().includes(hint) || x.app.toLowerCase().includes(hint)));
+    if (has) query = agentWindowHint;
+  }
+  const r = await runAtspi({ cmd: "snapshot", window: query, frame_path: framePath, max_nodes: 300 });
   if (!r.ok) {
     if (r.error === "missing_atspi") return { ok: false, message: "Reading app windows needs the accessibility library (sudo apt install python3-gi gir1.2-atspi-2.0)." };
     return { ok: false, message: String(r.detail ?? "I couldn't read that window.") };
@@ -94,13 +111,22 @@ export function resolveElement(ref: string): ResolvedElement {
   if (byId) return { ok: true, node: byId };
   const lower = key.toLowerCase();
   const exact = last.nodes.filter((n) => n.name.toLowerCase() === lower);
-  const pool = exact.length ? exact : last.nodes.filter((n) => n.name.toLowerCase().includes(lower) && n.name);
+  let pool = exact.length ? exact : last.nodes.filter((n) => n.name.toLowerCase().includes(lower) && n.name);
+  // A button and a text label often share a name (the Calculator's "=" key and the "=" shown on its display): when
+  // names collide, the operable control wins over plain text.
+  if (pool.length > 1) {
+    const controls = pool.filter((n) => !/^(label|heading|static|paragraph|title bar|status bar)$/.test(n.role));
+    if (controls.length >= 1) pool = controls;
+  }
   if (pool.length === 1) return { ok: true, node: pool[0] };
   if (pool.length === 0) return { ok: false, message: `No element "${key}" in ${last.title || "the window"}. Use observe and pick an id.` };
   return { ok: false, message: `"${key}" matches ${pool.length} elements (${pool.slice(0, 5).map((n) => `${n.id} ${n.role} "${n.name}"`).join("; ")}). Use an id.` };
 }
 
 async function act(node: UiNode, op: string, text?: string): Promise<{ ok: boolean; message: string }> {
+  if (last && isSystemPermissionDialog(last.app, last.title)) {
+    return { ok: false, message: "That's a system permission or password dialog — only the user can answer it. Ask them to." };
+  }
   const r = await runAtspi({ cmd: "act", path: node.path, role: node.role, name: node.name, op, text });
   if (r.ok) return { ok: true, message: "" };
   return { ok: false, message: String(r.detail ?? "That didn't work.") };
@@ -171,6 +197,29 @@ export async function closeWindowByTitle(title: string): Promise<{ ok: boolean; 
   }
   const after = await takeSnapshot("");
   return { ok: false, message: `"${win.title}" is still open — the app may be asking something (e.g. save changes). Look at the window and answer it.`, elements: after.ok ? after.text : undefined };
+}
+
+// Simulated keystrokes go to whichever window has keyboard focus — not necessarily the one the agent means. In
+// testing, "6*7⏎" and Ctrl+Q aimed at the Calculator went to the user's browser, because two windows (an X11 browser
+// and a Wayland app) both claimed to be active. So before typing we require ONE unambiguous focused window that
+// matches the window the agent is working in; otherwise refuse and let the planner use click/set_text, which act on
+// a specific control regardless of focus.
+const PLUMBING_APPS = new Set(["gnome-shell", "gjs", "ibus-x11", "ibus-extension-gtk3", "evolution-alarm-notify", "update-notifier", "xdg-desktop-portal-gnome", "xdg-desktop-portal-gtk"]);
+
+export async function keyboardTargetCheck(intended?: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const target = (intended || last?.title || "").trim();
+  if (!target) return { ok: false, message: "I haven't looked at the window I'd be typing into — use observe (or name the window) first." };
+  const w = await runAtspi({ cmd: "windows" });
+  if (!w.ok) return { ok: false, message: "I can't see which window has the keyboard, so I won't type blindly. Use click/set_text instead." };
+  const actives = (w.windows as { title: string; app: string; active: boolean }[]).filter((x) => x.active && x.title && !PLUMBING_APPS.has(x.app));
+  if (actives.length !== 1) {
+    return { ok: false, message: `I can't tell which window has the keyboard (${actives.map((x) => `"${x.title}"`).join(", ") || "none"}), so I won't type blindly. Use click/set_text on the element instead.` };
+  }
+  const t = target.toLowerCase();
+  if (!actives[0].title.toLowerCase().includes(t) && !t.includes(actives[0].title.toLowerCase())) {
+    return { ok: false, message: `The keyboard is in "${actives[0].title}", not "${target}" — I won't type into a window the user may be using. Bring the right window to the front, or use click/set_text.` };
+  }
+  return { ok: true };
 }
 
 export async function listWindows(): Promise<{ title: string; app: string; active: boolean }[]> {

@@ -35,6 +35,12 @@ INTERACTIVE = {
 }
 SHOWN_CONTAINERS_KEEP_NAME = {"label", "heading", "static", "paragraph", "title bar", "status bar"}
 MAX_DEPTH = 16
+# Desktop plumbing that shows up as "windows" but is never what the user means by "the window" (the top bar with the
+# clock/battery, desktop icons, input methods, portals…). Seen in testing: with no ACTIVE window reported, the old
+# fallback picked GNOME Shell's top bar.
+SYSTEM_APPS = {"gnome-shell", "gjs", "ibus-x11", "ibus-extension-gtk3", "evolution-alarm-notify", "update-notifier",
+               "xdg-desktop-portal-gnome", "xdg-desktop-portal-gtk", "gsd-color", "gsd-wacom", "gsd-keyboard",
+               "gsd-media-keys", "gsd-power", "gsd-xsettings"}
 DEADLINE_S = 6.0
 
 
@@ -134,10 +140,15 @@ def pick_window(query):
                 return path, app, frame
         return None
     for path, app, frame in cands:
-        if states(frame).get("active"):
+        if states(frame).get("active") and app not in SYSTEM_APPS:
             return path, app, frame
-    for path, app, frame in cands:  # no ACTIVE state reported (some Wayland setups): first showing window
-        if states(frame).get("showing") and name_of(frame):
+    # No ACTIVE state reported (common right after a window opens on Wayland): the NEWEST real app window — apps are
+    # listed in registration order, so the last one is the one most recently started.
+    for path, app, frame in reversed(cands):
+        if app not in SYSTEM_APPS and states(frame).get("showing") and name_of(frame):
+            return path, app, frame
+    for path, app, frame in cands:
+        if states(frame).get("active"):
             return path, app, frame
     return None
 

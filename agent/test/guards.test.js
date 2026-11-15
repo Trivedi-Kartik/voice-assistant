@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { isTerminalWindow, humanTextFromRejected } = require("../dist/main/agent/guards.js");
+const { isTerminalWindow, humanTextFromRejected, isSystemPermissionDialog } = require("../dist/main/agent/guards.js");
 
 test("terminals and shells are recognised across platforms", () => {
   for (const [app, title] of [
@@ -24,4 +24,14 @@ test("rejected generations never leak raw JSON into speech", () => {
   assert.strictEqual(humanTextFromRejected('{"name":"answer","arguments":{"summary":"Renamed it."}}'), "Renamed it.");
   assert.strictEqual(humanTextFromRejected('{"name":"x","arguments":{"n":1}}'), ""); // nothing human in it -> empty, never the JSON
   assert.strictEqual(humanTextFromRejected("  All done.  "), "All done.");
+});
+
+test("system permission and password dialogs are recognised (the agent must never answer them)", () => {
+  assert.ok(isSystemPermissionDialog("xdg-desktop-portal-gnome", "Remote desktop"));
+  assert.ok(isSystemPermissionDialog("polkit-gnome-authentication-agent-1", ""));
+  assert.ok(isSystemPermissionDialog("gcr-prompter", "Unlock Login Keyring"));
+  assert.ok(isSystemPermissionDialog("", "Authentication Required"));
+  assert.ok(isSystemPermissionDialog("consent.exe", "User Account Control"));
+  assert.strictEqual(isSystemPermissionDialog("gnome-calculator", "Calculator"), false);
+  assert.strictEqual(isSystemPermissionDialog("Google Chrome", "Share a note - Docs"), false);
 });

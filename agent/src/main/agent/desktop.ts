@@ -5,7 +5,8 @@ import { promisify } from "node:util";
 import { homeDir } from "./paths.js";
 import type { AgentActionWire } from "../../shared/protocol.js";
 import type { AgentActionResult } from "./skills.js";
-import { clickElement, closeWindowByTitle, focusWindowByTitle, listWindows, setElementText, takeSnapshot, typeIntoFocused, uiAvailable } from "./ui.js";
+import { portalKeys, portalType } from "./a11y/portal.js";
+import { clickElement, closeWindowByTitle, focusWindowByTitle, keyboardTargetCheck, listWindows, setElementText, takeSnapshot, typeIntoFocused, uiAvailable } from "./ui.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -72,7 +73,18 @@ export function toSendKeys(keys: string[]): string | null {
   return main ? mods + main : null;
 }
 
+async function windowsForegroundTitle(): Promise<string> {
+  const parsed = JSON.parse(await runPs(WIN_OBSERVE)) as { active?: string };
+  return parsed.active ?? "";
+}
+
 async function windowsUi(a: AgentActionWire): Promise<AgentActionResult> {
+  if ((a.name === "type_text" || a.name === "hotkey") && str(a.args.window)) {
+    const fg = await windowsForegroundTitle();
+    if (!fg.toLowerCase().includes(str(a.args.window).toLowerCase())) {
+      return { ok: false, message: `The keyboard is in "${fg}", not "${str(a.args.window)}" — use focus_window first.` };
+    }
+  }
   switch (a.name) {
     case "focus_window": {
       const out = await runPs(`$w = New-Object -ComObject WScript.Shell; if ($w.AppActivate(${psString(str(a.args.title))})) { 'ok' } else { 'missing' }`);
@@ -111,6 +123,16 @@ async function hasXdotool(): Promise<boolean> {
   }
 }
 
+// On X11 the focused window is unambiguous (xdotool getactivewindow); still make sure it's the one meant.
+async function x11TargetCheck(intended: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!intended) return keyboardTargetCheck(); // falls back to the last observed window
+  const { stdout } = await execFileAsync("xdotool", ["getactivewindow", "getwindowname"], { timeout: 3000 });
+  const active = stdout.trim();
+  return active.toLowerCase().includes(intended.toLowerCase())
+    ? { ok: true }
+    : { ok: false, message: `The keyboard is in "${active}", not "${intended}" — bring the right window to the front first.` };
+}
+
 async function linuxUi(a: AgentActionWire): Promise<AgentActionResult> {
   const wayland = isWayland();
   const a11y = await uiAvailable();
@@ -128,10 +150,19 @@ async function linuxUi(a: AgentActionWire): Promise<AgentActionResult> {
       return setElementText(str(a.args.element), str(a.args.text));
     }
     case "type_text": {
-      // X11: real key events (works in any app). Wayland: insert into the focused text field via accessibility.
+      // X11: real key events. Wayland: the RemoteDesktop portal (user approves once), else insert into the focused
+      // text field via accessibility. Either way, only after confirming the right window has the keyboard.
+      if (xdo || wayland) {
+        const chk = xdo ? await x11TargetCheck(str(a.args.window)) : await keyboardTargetCheck(str(a.args.window));
+        if (!chk.ok) return chk;
+      }
       if (xdo) {
         await execFileAsync("xdotool", ["type", "--delay", "15", "--", str(a.args.text)], { timeout: 30_000 });
         return { ok: true, message: "Typed the text." };
+      }
+      if (wayland) {
+        const r = await portalType(str(a.args.text));
+        if (r.ok || !a11y) return r;
       }
       if (a11y) return typeIntoFocused(str(a.args.text));
       return { ok: false, message: "I can't type into other apps on this system yet." };
@@ -153,6 +184,15 @@ async function linuxUi(a: AgentActionWire): Promise<AgentActionResult> {
       return { ok: r.ok, message: r.message, ...(r.elements ? { observation: { elements: r.elements } } : {}) };
     }
     case "hotkey": {
+      const keyList = Array.isArray(a.args.keys) ? a.args.keys.map((k) => String(k)) : [];
+      if (xdo || wayland) {
+        const chk = xdo ? await x11TargetCheck(str(a.args.window)) : await keyboardTargetCheck(str(a.args.window));
+        if (!chk.ok) return chk;
+      }
+      if (!xdo && wayland) {
+        const r = await portalKeys(keyList);
+        return r.ok ? r : { ...r, message: `${r.message} Click the matching button or menu item instead.` };
+      }
       if (!xdo) return { ok: false, message: "Keyboard shortcuts aren't available on this desktop yet — click the matching button or menu item instead." };
       const keys = Array.isArray(a.args.keys) ? a.args.keys.map((k) => String(k).toLowerCase()) : [];
       const combo = keys.map((k) => XDO_KEYS[k] ?? (k.length === 1 ? k : `F${k.replace(/^f/, "")}`)).join("+");

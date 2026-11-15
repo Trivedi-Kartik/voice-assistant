@@ -2,7 +2,10 @@
 // compiled code so they ship inside the packaged app (read from app.asar via fs and passed to python3 -c).
 const fs = require("fs");
 const path = require("path");
-const pairs = [["src/main/agent/a11y/atspi_helper.py", "dist/main/agent/a11y/atspi_helper.py"]];
+const pairs = [
+  ["src/main/agent/a11y/atspi_helper.py", "dist/main/agent/a11y/atspi_helper.py"],
+  ["src/main/agent/a11y/portal_helper.py", "dist/main/agent/a11y/portal_helper.py"],
+];
 for (const [from, to] of pairs) {
   const src = path.join(__dirname, "..", from);
   const dest = path.join(__dirname, "..", to);
