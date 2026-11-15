@@ -4,6 +4,24 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-15 — Design phase: the whole app gets a premium, calmer visual layer
+
+Scope: the product's only frontend is the Electron window (React + plain CSS tokens; no Tailwind/ShadCN/animation libraries),
+so the redesign is a token + motion layer in `styles.css` ("DESIGN v2") plus a small spotlight/stagger hook in `PortalGrid`.
+No new dependencies, no change to any behaviour, IPC or data.
+- **Audit found real layout bugs, now fixed:** the card grid was taller than the window, so the flex column squeezed the voice
+  orb up under the header and the "press … to talk" label bled behind the first card; at narrow widths the status pill and nav
+  crowded each other; capability cards were tall, heavy and (after a first fix) clipped their own text because rows could shrink
+  below their content.
+- **One motion language:** a single ease and three durations. Screens rise in, panels slide/blur in, chat bubbles pop in,
+  capability cards enter staggered and have a pointer-following spotlight with a lift, buttons lift/press, inputs get a focus
+  glow, the connection dot pulses while connecting, "Loading…" is a shimmer skeleton, and a slow two-field background light
+  drifts (transform-only). Everything is disabled under `prefers-reduced-motion`; keyboard focus rings added.
+- **Verified** by rendering the real built renderer in headless Chrome against a mocked backend (no real mic/screen/data):
+  consent, login, main, listening, conversation, settings, help and task-panel screens at 480x760 and 380x560, zero console
+  or page errors; before/after reviewed for the main, conversation and narrow layouts. Not checked: real-device performance
+  profiling, light mode (the app is dark-only), and the Windows rendering of the same CSS.
+
 ## 2026-11-15 — Independent safety review of the PC agent: 10 holes closed
 
 A read-only reviewer audited everything added since the voice release; the serious findings were confirmed and fixed, each

@@ -30,7 +30,17 @@ export function PortalGrid() {
   return (
     <div className="portal-grid">
       {t.portal.cards.map((card, i) => (
-        <div key={card.title} className="portal-card">
+        <div
+          key={card.title}
+          className="portal-card"
+          // --i staggers the entrance; --mx/--my feed the pointer-following spotlight (CSS only does the drawing).
+          style={{ ["--i" as string]: i } as React.CSSProperties}
+          onPointerMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+            e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+          }}
+        >
           <div className="portal-card-head">
             <span className="portal-icon">{ICONS[i]}</span>
             <span className="portal-title">{card.title}</span>

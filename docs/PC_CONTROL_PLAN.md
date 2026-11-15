@@ -214,6 +214,7 @@ reviewed (tool-safety-reviewer, contract-sync-checker) and verified on real mach
 | 4 Linux Wayland | Done: keyboard + screen frames via the RemoteDesktop/ScreenCast portal; focus guards |
 | 5 Vision fallback | `screen look` done; vision CLICKING off (measured 1/3 accurate); bring-your-own-model done (fake-network tests only) |
 | 6 Polish | Not started: voice "stop" while working, progress narration, cross-app memory |
+| 7 Design | Done: premium visual + motion layer across every screen (see CHANGELOG 2026-11-15) |
 
 Known limits: the free Groq key (~200K tokens/day) caps testing and production use; vision grounding with the current model is
 unreliable; the Wayland permission dialog needs one tick ("Allow Remote Interaction") that is off by default.
