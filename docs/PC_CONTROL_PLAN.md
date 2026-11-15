@@ -1,6 +1,6 @@
 # Karvix 2 — Full PC control by voice + human voice (plan)
 
-Status: **approved 2026-11-14 — Phase 0 (voice) done; Phase 1 (agent kernel v2) done 2026-11-15; Phase 2 in progress (Linux accessibility done; Windows UIA + measurement pending).** Supersedes the "Phase 4 Browser Agent" and
+Status: **approved 2026-11-14 — Phase 0 (voice) done; Phase 1 (agent kernel v2) done 2026-11-15; Phases 2-5 built (see CHANGELOG 2026-11-15); Phase 6 polish and Windows verification pending.** Supersedes the "Phase 4 Browser Agent" and
 "Phase 5 Computer Use hardening" entries in `IMPLEMENTATION_ROADMAP.md` once approved.
 
 Goal: the user can operate their whole PC by voice — open/edit/save files, use any app, shop online,
@@ -202,3 +202,18 @@ reviewed (tool-safety-reviewer, contract-sync-checker) and verified on real mach
 3. **Platform:** Windows and Linux (X11 + Wayland) are built **together** (Phases 2 and 4 run in parallel).
 4. **Go-ahead:** Phase 0 (voice) now, then Phase 1 (agent kernel v2 + eval). Each phase is reviewed by the
    product owner before the next starts.
+
+## 9. Status at 2026-11-15 (honest)
+
+| Phase | State |
+|---|---|
+| 0 Voice | Done, shipped |
+| 1 Kernel + safety + eval | Done (eval 15/16, voice e2e 3/3) |
+| 2 Skills + app control | Linux done and tested; Windows UIA written, UNTESTED (CI smoke test added) |
+| 3 Browser / shopping | Done against a local mock shop (real planner); WhatsApp untested (needs an account) |
+| 4 Linux Wayland | Done: keyboard + screen frames via the RemoteDesktop/ScreenCast portal; focus guards |
+| 5 Vision fallback | `screen look` done; vision CLICKING off (measured 1/3 accurate); bring-your-own-model done (fake-network tests only) |
+| 6 Polish | Not started: voice "stop" while working, progress narration, cross-app memory |
+
+Known limits: the free Groq key (~200K tokens/day) caps testing and production use; vision grounding with the current model is
+unreliable; the Wayland permission dialog needs one tick ("Allow Remote Interaction") that is off by default.
