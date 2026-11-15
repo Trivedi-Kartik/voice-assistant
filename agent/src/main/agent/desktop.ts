@@ -87,6 +87,7 @@ async function windowsUi(a: AgentActionWire): Promise<AgentActionResult> {
   }
   switch (a.name) {
     case "focus_window": {
+      if (await uiAvailable()) { const r = await focusWindowByTitle(str(a.args.title)); if (r.ok) return r; }
       const out = await runPs(`$w = New-Object -ComObject WScript.Shell; if ($w.AppActivate(${psString(str(a.args.title))})) { 'ok' } else { 'missing' }`);
       return out === "ok" ? { ok: true, message: `Switched to "${str(a.args.title)}".` } : { ok: false, message: `No window titled "${str(a.args.title)}" found.` };
     }
@@ -101,10 +102,18 @@ async function windowsUi(a: AgentActionWire): Promise<AgentActionResult> {
       await runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(${psString(sk)})`);
       return { ok: true, message: `Pressed ${keys.join("+")}.` };
     }
-    case "close_window":
-      return { ok: false, message: "Closing windows on Windows isn't available yet." };
+    case "click": {
+      const r = await clickElement(str(a.args.element));
+      return r.ok && a.args.double === true ? { ok: false, message: "Double-click isn't supported — click once or use a keyboard shortcut." } : r;
+    }
+    case "set_text":
+      return setElementText(str(a.args.element), str(a.args.text));
+    case "close_window": {
+      const r = await closeWindowByTitle(str(a.args.title));
+      return { ok: r.ok, message: r.message, ...(r.elements ? { observation: { elements: r.elements } } : {}) };
+    }
     default:
-      return { ok: false, message: `"${a.name}" on UI elements isn't available on Windows yet (coming with accessibility support). Use a file/app skill or keyboard shortcuts instead.` };
+      return { ok: false, message: `"${a.name}" isn't available on Windows.` };
   }
 }
 
@@ -211,7 +220,7 @@ const SETTLE_MS = 600;
 
 export async function runUiAction(a: AgentActionWire): Promise<AgentActionResult> {
   const result = await (process.platform === "win32" ? windowsUi(a) : linuxUi(a));
-  if (!result.ok || process.platform === "win32") return result;
+  if (!result.ok) return result;
   await new Promise((r) => setTimeout(r, SETTLE_MS));
   const snap = await takeSnapshot("");
   return snap.ok ? { ...result, observation: { elements: snap.text } } : result;
@@ -220,7 +229,6 @@ export async function runUiAction(a: AgentActionWire): Promise<AgentActionResult
 // The explicit `observe` action: windows + the active window's elements.
 export async function observeUi(windowQuery = ""): Promise<AgentActionResult> {
   const obs = await observe();
-  if (process.platform === "win32") return { ok: true, message: "Looked at the screen.", observation: obs };
   const snap = await takeSnapshot(windowQuery);
   return { ok: true, message: snap.ok ? "Looked at the active window." : snap.message, observation: { ...obs, ...(snap.ok ? { elements: snap.text } : {}) } };
 }

@@ -1,0 +1,18 @@
+name: Windows UI helper smoke test
+
+# Runs the Windows UI Automation helper against a real Notepad on a GitHub-hosted Windows machine — the only
+# place this code can be exercised automatically (it can't run on Linux).
+on:
+  push:
+    branches: [main]
+    paths: ["agent/src/main/agent/a11y/uia_helper.ps1", "agent/test/uia-smoke.ps1", ".github/workflows/windows-ui.yml"]
+  workflow_dispatch:
+
+jobs:
+  uia:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: UIA helper against Notepad
+        shell: powershell
+        run: ./agent/test/uia-smoke.ps1

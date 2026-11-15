@@ -1,4 +1,4 @@
-import { atspiAvailable, runAtspi } from "./a11y/atspi.js";
+import { a11yAvailable, MISSING_A11Y_HINT, runA11y } from "./a11y/provider.js";
 import { isSystemPermissionDialog } from "./guards.js";
 
 // Platform-neutral view of "what's on screen" built from the OS accessibility tree, and the operations on
@@ -72,22 +72,22 @@ export function formatSnapshot(s: Snapshot): string {
 }
 
 export async function uiAvailable(): Promise<boolean> {
-  return process.platform === "linux" ? atspiAvailable() : false;
+  return a11yAvailable();
 }
 
 export async function takeSnapshot(windowQuery = "", framePath?: string): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
-  if (process.platform !== "linux") return { ok: false, message: "Reading app windows isn't available on this system yet." };
+  if (process.platform !== "linux" && process.platform !== "win32") return { ok: false, message: "Reading app windows isn't available on this system yet." };
   let query = windowQuery;
   if (!query && !framePath && agentWindowHint) {
     // Only use the hint if such a window actually exists; otherwise fall back to the active window.
-    const w = await runAtspi({ cmd: "windows" });
+    const w = await runA11y({ cmd: "windows" });
     const hint = agentWindowHint.toLowerCase();
     const has = w.ok && (w.windows as { title: string; app: string }[]).some((x) => x.title && (x.title.toLowerCase().includes(hint) || x.app.toLowerCase().includes(hint)));
     if (has) query = agentWindowHint;
   }
-  const r = await runAtspi({ cmd: "snapshot", window: query, frame_path: framePath, max_nodes: 300 });
+  const r = await runA11y({ cmd: "snapshot", window: query, frame_path: framePath, max_nodes: 300 });
   if (!r.ok) {
-    if (r.error === "missing_atspi") return { ok: false, message: "Reading app windows needs the accessibility library (sudo apt install python3-gi gir1.2-atspi-2.0)." };
+    if (r.error === "missing_atspi" || r.error === "missing_uia") return { ok: false, message: MISSING_A11Y_HINT };
     return { ok: false, message: String(r.detail ?? "I couldn't read that window.") };
   }
   const app = String(r.app ?? "");
@@ -127,7 +127,7 @@ async function act(node: UiNode, op: string, text?: string): Promise<{ ok: boole
   if (last && isSystemPermissionDialog(last.app, last.title)) {
     return { ok: false, message: "That's a system permission or password dialog — only the user can answer it. Ask them to." };
   }
-  const r = await runAtspi({ cmd: "act", path: node.path, role: node.role, name: node.name, op, text });
+  const r = await runA11y({ cmd: "act", path: node.path, role: node.role, name: node.name, op, text });
   if (r.ok) return { ok: true, message: "" };
   return { ok: false, message: String(r.detail ?? "That didn't work.") };
 }
@@ -148,7 +148,7 @@ export async function setElementText(ref: string, text: string): Promise<{ ok: b
 
 // Types into whichever text field currently has keyboard focus (at the caret).
 export async function typeIntoFocused(text: string): Promise<{ ok: boolean; message: string }> {
-  const f = await runAtspi({ cmd: "focused_editable" });
+  const f = await runA11y({ cmd: "focused_editable" });
   const el = f.element as { path: string; role: string; name: string } | null | undefined;
   if (!f.ok || !el) return { ok: false, message: "No text field has focus — click one first, or use set_text with an element." };
   const r = await act(el as UiNode, "insert_text", text);
@@ -156,13 +156,13 @@ export async function typeIntoFocused(text: string): Promise<{ ok: boolean; mess
 }
 
 export async function focusWindowByTitle(title: string): Promise<{ ok: boolean; message: string }> {
-  const w = await runAtspi({ cmd: "windows" });
+  const w = await runA11y({ cmd: "windows" });
   if (!w.ok) return { ok: false, message: "I can't see the open windows." };
   const q = title.toLowerCase();
   const win = (w.windows as { path: string; app: string; title: string; active: boolean }[]).find((x) => x.title.toLowerCase().includes(q) || x.app.toLowerCase().includes(q));
   if (!win) return { ok: false, message: `No window titled "${title}" found.` };
   if (win.active) return { ok: true, message: `"${win.title}" is already in front.` };
-  const r = await runAtspi({ cmd: "act", path: win.path, role: "frame", op: "focus" });
+  const r = await runA11y({ cmd: "act", path: win.path, role: "frame", op: "focus" });
   if (r.ok) return { ok: true, message: `Asked the desktop to focus "${win.title}" (some desktops ignore this).` };
   return { ok: false, message: `Couldn't bring "${win.title}" to the front on this desktop.` };
 }
@@ -174,7 +174,7 @@ export async function focusWindowByTitle(title: string): Promise<{ ok: boolean; 
 export async function closeWindowByTitle(title: string): Promise<{ ok: boolean; message: string; elements?: string }> {
   const q = title.toLowerCase();
   const matching = async () => {
-    const w = await runAtspi({ cmd: "windows" });
+    const w = await runA11y({ cmd: "windows" });
     if (!w.ok) return undefined;
     return (w.windows as { path: string; title: string; app: string; active: boolean }[]).filter(
       (x) => x.title && (x.title.toLowerCase().includes(q) || x.app.toLowerCase().includes(q))
@@ -184,12 +184,19 @@ export async function closeWindowByTitle(title: string): Promise<{ ok: boolean; 
   if (!before) return { ok: false, message: "I can't see the open windows." };
   if (before.length === 0) return { ok: false, message: `No window titled "${title}" found.` };
   const win = before.find((x) => x.active) ?? before[0];
-  const snap = await takeSnapshot("", win.path);
+  if (process.platform === "win32") {
+    // WindowPattern.Close() is the same as the title-bar X (the app can still ask to save).
+    const c = await runA11y({ cmd: "act", path: win.path, role: "frame", op: "close" });
+    if (!c.ok) return { ok: false, message: String(c.detail ?? "Couldn't close that window.") };
+  }
+  const snap = process.platform === "win32" ? ({ ok: true, text: "" } as const) : await takeSnapshot("", win.path);
   if (!snap.ok) return { ok: false, message: snap.message };
-  const closeBtn = last!.nodes.find((n) => /^(close|close window|quit|exit)$/i.test(n.name.trim()) && /button|menu item/.test(n.role));
-  if (!closeBtn) return { ok: false, message: `"${win.title}" has no Close button I can press.`, elements: snap.text };
-  const r = await act(closeBtn, "click");
-  if (!r.ok) return r;
+  if (process.platform !== "win32") {
+    const closeBtn = last!.nodes.find((n) => /^(close|close window|quit|exit)$/i.test(n.name.trim()) && /button|menu item/.test(n.role));
+    if (!closeBtn) return { ok: false, message: `"${win.title}" has no Close button I can press.`, elements: snap.text };
+    const r = await act(closeBtn, "click");
+    if (!r.ok) return r;
+  }
   for (let i = 0; i < 8; i++) {
     await new Promise((res) => setTimeout(res, 500));
     const now = await matching();
@@ -209,7 +216,7 @@ const PLUMBING_APPS = new Set(["gnome-shell", "gjs", "ibus-x11", "ibus-extension
 export async function keyboardTargetCheck(intended?: string): Promise<{ ok: true } | { ok: false; message: string }> {
   const target = (intended || last?.title || "").trim();
   if (!target) return { ok: false, message: "I haven't looked at the window I'd be typing into — use observe (or name the window) first." };
-  const w = await runAtspi({ cmd: "windows" });
+  const w = await runA11y({ cmd: "windows" });
   if (!w.ok) return { ok: false, message: "I can't see which window has the keyboard, so I won't type blindly. Use click/set_text instead." };
   const actives = (w.windows as { title: string; app: string; active: boolean }[]).filter((x) => x.active && x.title && !PLUMBING_APPS.has(x.app));
   if (actives.length !== 1) {
@@ -223,7 +230,7 @@ export async function keyboardTargetCheck(intended?: string): Promise<{ ok: true
 }
 
 export async function listWindows(): Promise<{ title: string; app: string; active: boolean }[]> {
-  if (process.platform !== "linux") return [];
-  const w = await runAtspi({ cmd: "windows" });
+  if (process.platform !== "linux" && process.platform !== "win32") return [];
+  const w = await runA11y({ cmd: "windows" });
   return w.ok ? (w.windows as { title: string; app: string; active: boolean }[]).filter((x) => x.title) : [];
 }

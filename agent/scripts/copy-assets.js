@@ -5,6 +5,7 @@ const path = require("path");
 const pairs = [
   ["src/main/agent/a11y/atspi_helper.py", "dist/main/agent/a11y/atspi_helper.py"],
   ["src/main/agent/a11y/portal_helper.py", "dist/main/agent/a11y/portal_helper.py"],
+  ["src/main/agent/a11y/uia_helper.ps1", "dist/main/agent/a11y/uia_helper.ps1"],
 ];
 for (const [from, to] of pairs) {
   const src = path.join(__dirname, "..", from);
