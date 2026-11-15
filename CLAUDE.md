@@ -30,7 +30,7 @@ npm run typecheck    # main AND renderer tsconfigs
 npm run build        # vite build (renderer) + tsc (main) → dist/
 npm run package      # build + electron-builder → release/ (Windows nsis .exe, Linux AppImage)
 ```
-No tests and no linter are configured in `agent/` (the `eslint-disable` comments in source reference a linter that isn't set up). `SERVER_HTTP_URL` / `SERVER_WS_URL` default in code to the production Render URL (`main/auth/authManager.ts`, `main/ws/connection.ts`); `agent/.env` is dev-only and is never bundled into a packaged build.
+`agent/` has a small `node:test` suite (`npm test` — builds, then runs `agent/test/`) for the pure device-side guards; no linter is configured (the `eslint-disable` comments in source reference one that isn't set up). `SERVER_HTTP_URL` / `SERVER_WS_URL` default in code to the production Render URL (`main/auth/authManager.ts`, `main/ws/connection.ts`); `agent/.env` is dev-only and is never bundled into a packaged build.
 
 ## Architecture (the parts that span multiple files)
 
@@ -57,14 +57,14 @@ No tests and no linter are configured in `agent/` (the `eslint-disable` comments
 ## Karvix 2 PC agent (`pc_task`) — see `docs/PC_CONTROL_PLAN.md`
 
 - **Server** `server/src/agent/`: `actions.ts` (compact action schemas — keep them small: every planner call re-sends them and the shared free Groq key is capped at 8K tokens/min and ~200K tokens/day), `planner.ts` (Groq, one function call per step), `runner.ts` (loop: budgets, verification, ask/confirm pauses across voice turns, cancel), `safety.ts` (deterministic gate — never trusts the model's risk judgement), `wsDevice.ts` (device over WS with timeouts). Offered as `pc_task` only to clients whose `client_hello` includes `pc_agent`; older clients keep `computer_use_task`. Per-user daily cap: `PC_TASK_DAILY_CAP` (BYOK users exempt).
-- **Desktop** `agent/src/main/agent/`: `agentHost.ts` answers `agent_request` (observe/act/verify), `skills.ts` (home-only file ops via `paths.ts`, re-confirms delete/overwrite client-side), `desktop.ts` (observation + Windows/X11 keyboard and window focus; Wayland UI control is Phase 4).
+- **Desktop** `agent/src/main/agent/`: `agentHost.ts` answers `agent_request` (observe/act/verify), `skills.ts` (home-only file ops via `paths.ts`, re-confirms delete/overwrite client-side), `desktop.ts` (observation + UI actions), `ui.ts` + `a11y/` (Linux accessibility: reads real window elements with stable ids and presses/types/closes them via AT-SPI, works on Wayland; `a11y/atspi_helper.py` is copied into `dist/` by `scripts/copy-assets.js` and run with `python3 -c`), `guards.ts` (never type into terminals). Windows UI Automation is not built yet; Wayland keyboard shortcuts need the portal (Phase 4).
 - **Eval** (real planner + real skills in a sandbox home, inside Electron; uses the Groq key from `server/.env` and spends its quota):
   ```bash
   cd agent && npm run build && (cd ../server && npm run build)
   node_modules/electron/dist/electron --no-sandbox eval/run-eval.js [taskId ...]
   EVAL_MODEL=openai/gpt-oss-20b node_modules/electron/dist/electron --no-sandbox eval/run-eval.js   # separate quota
   ```
-  Tasks live in `agent/eval/tasks.js`; results in `agent/eval/last-results.json` (gitignored).
+  Add `--trace` to print each step's result, `--ui` for the real-GUI tasks (they open Calculator/Text Editor on your screen). Tasks live in `agent/eval/tasks.js`; results in `agent/eval/last-results.json` (gitignored). A full run costs ~60-100K Groq tokens of the ~200K/day free allowance — don't run it twice in a day on the production key. `agent/eval/e2e-voice.js` is the real voice-pipeline test (needs a local server).
 
 ## Project skills and agents (`.claude/`)
 

@@ -34,6 +34,7 @@ export const AGENT_ACTION_SCHEMAS: ToolSchema[] = [
   fn("clipboard", "Read or write the clipboard.", { op: s("read | write", { enum: ["read", "write"] }), text: s("Text for write") }, ["op"]),
   fn("wait", "Wait for something to load.", { seconds: { type: "number", description: "1-10" } }, ["seconds"]),
   fn("focus_window", "Bring a window to the front by title.", { title: s("Title or part of it") }, ["title"]),
+  fn("close_window", "Close a window like the user would (its Close button). Succeeds only once it is really gone; if the app asks to save, you must answer that.", { title: s("Title or part of it") }, ["title"]),
   fn("click", "Click a UI element (id from the observation, or its name).", { element: s("Element id or name"), double: { type: "boolean", description: "Double-click" } }, ["element"]),
   fn("set_text", "Set the text of an input field.", { element: s("Element id or name"), text: s("Text") }, ["element", "text"]),
   fn("type_text", "Type text where the keyboard focus is.", { text: s("Text") }, ["text"]),
@@ -48,7 +49,7 @@ export const AGENT_ACTION_SCHEMAS: ToolSchema[] = [
 export const AGENT_ACTION_NAMES = new Set([
   "file_read", "file_write", "file_list", "file_mkdir", "file_move", "file_copy", "file_delete", "file_open",
   "open_app", "open_url", "clipboard_read", "clipboard_write", "wait",
-  "focus_window", "click", "set_text", "type_text", "hotkey", "observe",
+  "focus_window", "close_window", "click", "set_text", "type_text", "hotkey", "observe",
   "ask_user", "done", "fail",
 ]);
 export const META_ACTIONS = new Set(["ask_user", "done", "fail"]);

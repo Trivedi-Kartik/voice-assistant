@@ -45,6 +45,7 @@ function describe(action: AgentAction): string {
     case "type_text": return "Typing";
     case "hotkey": return `Pressing ${Array.isArray(a.keys) ? a.keys.join("+") : ""}`;
     case "focus_window": return `Switching to ${v("title")}`;
+    case "close_window": return `Closing ${v("title")}`;
     case "wait": return "Waiting";
     default: return action.name.replace(/_/g, " ");
   }
@@ -142,6 +143,21 @@ export class AgentRunner {
     }
   }
 
+  private dropOldObservations(): void {
+    for (const m of this.messages) {
+      if (m.role !== "tool" || !m.content.includes('"state"')) continue;
+      try {
+        const parsed = JSON.parse(m.content) as Record<string, unknown>;
+        if (typeof parsed.state === "string") {
+          parsed.state = "(older view of the screen omitted — use the latest one)";
+          m.content = JSON.stringify(parsed);
+        }
+      } catch {
+        /* not JSON we wrote — leave it */
+      }
+    }
+  }
+
   private async loop(): Promise<AgentOutcome> {
     for (;;) {
       if (this.cancelled) return this.end({ kind: "cancelled" });
@@ -233,6 +249,10 @@ export class AgentRunner {
     this.consecutiveFailures = result.ok ? 0 : this.consecutiveFailures + 1;
     this.opts.onStatus?.({ state: "step", text: result.message, ok: result.ok });
 
+    // Only the NEWEST window listing stays in the context. Older ones are stale (the screen has moved on, and the
+    // model read values from them — it once reported "22" for 7+5), and each costs 1-2K tokens, which on the free
+    // Groq key (8K tokens/min) turned a 12-step task into a 5-minute crawl.
+    if (result.observation) this.dropOldObservations();
     const dataText = result.data === undefined ? undefined : JSON.stringify(result.data);
     this.push({
       role: "tool",

@@ -10,6 +10,8 @@ export interface AgentActionResult {
   ok: boolean;
   message: string;
   data?: unknown;
+  // Fresh state of the screen after the action (windows / UI elements) — shown to the planner.
+  observation?: { platform?: string; activeWindow?: { title: string; app?: string }; windows?: { title: string; app?: string }[]; elements?: string; notes?: string[] };
   needsConfirmation?: { prompt: string; kind?: "delete" | "overwrite"; target?: string };
 }
 

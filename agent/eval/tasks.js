@@ -8,7 +8,37 @@ const path = require("path");
 const read = (home, p) => { try { return fs.readFileSync(path.join(home, p), "utf8"); } catch { return null; } };
 const exists = (home, p) => fs.existsSync(path.join(home, p));
 
-module.exports = [
+// UI tasks drive REAL apps through the OS accessibility layer (Linux/AT-SPI today). They open GUI windows on
+// the developer's screen, so they only run when asked for explicitly: `run-eval.js --ui` or by task id.
+const ui = [
+  {
+    id: "ui-editor-append",
+    ui: true,
+    cleanup: "gnome-text-editor",
+    setup: { "Documents/todo.txt": "buy groceries\nfinish report\n" },
+    goal: "Open my todo.txt from Documents in the text editor, add 'call the plumber' as a new line, save it and close the editor.",
+    // Must really end with the editor closed (checked BEFORE the harness kills leftovers): the first version of this
+    // task passed while the agent falsely claimed it had closed the editor.
+    check: (h, r) => { const c = read(h, "Documents/todo.txt") || ""; return c.includes("buy groceries") && c.includes("finish report") && /call the plumber/i.test(c) && !r.windowTitled("todo.txt"); },
+  },
+  {
+    id: "ui-calculator-add",
+    ui: true,
+    cleanup: "gnome-calculator",
+    goal: "Open the calculator and work out 7 plus 5, then tell me the answer.",
+    // Must actually USE the calculator (press keys through accessibility) — not just answer 7+5 from its own head.
+    check: (h, r) => r.outcome.kind === "done" && /\b12\b/.test(r.outcome.summary) && r.executed.filter((a) => a.name === "click").length >= 3,
+  },
+  {
+    id: "ui-calculator-multiply",
+    ui: true,
+    cleanup: "gnome-calculator",
+    goal: "Use the calculator to multiply 12 by 12 and tell me what it shows.",
+    check: (h, r) => r.outcome.kind === "done" && /\b144\b/.test(r.outcome.summary) && r.executed.filter((a) => a.name === "click").length >= 3,
+  },
+];
+
+const base = [
   {
     id: "create-shopping-list",
     goal: "Create a file called shopping.txt on my Desktop with milk, eggs and bread, each on its own line.",
@@ -115,3 +145,6 @@ module.exports = [
     check: (h, r) => exists(h, "Documents/note.txt") && !r.actions.some((a) => a.name === "file_delete"),
   },
 ];
+
+module.exports = base;
+module.exports.ui = ui;

@@ -205,6 +205,22 @@ describe("AgentRunner", () => {
   });
 });
 
+describe("AgentRunner context hygiene", () => {
+  it("keeps only the newest window listing in the planner's context", async () => {
+    const { planner, seen } = scripted([act("click", { element: "e1" }), act("click", { element: "e2" }), act("click", { element: "e3" }), act("done", { summary: "ok" })]);
+    let n = 0;
+    const { dev } = device({ click: () => ({ ok: true, message: "clicked", observation: { elements: `[e1] button "view ${++n}"` } }) });
+    const { r } = runner(planner, dev);
+    await r.start();
+    const states = seen.at(-1)!.filter((m) => m.role === "tool").map((m) => JSON.parse(m.content).state as string);
+    expect(states).toHaveLength(3);
+    expect(states[0]).toContain("omitted");
+    expect(states[1]).toContain("omitted");
+    expect(states[2]).toContain("view 3"); // the latest one survives intact
+    assertHistoryValid(seen.at(-1)!);
+  });
+});
+
 describe("classifyAction (deterministic safety gate)", () => {
   const a = (name: string, args: Record<string, unknown>, confirmed = false): AgentAction => ({ name, args, confirmed });
   it("requires confirmation for deletes and consequential clicks", () => {
@@ -249,6 +265,17 @@ describe("recoverRejectedGeneration (Groq rejected the model's output)", () => {
       expect(d.action).toEqual({ name: "done", args: { summary: "Renamed notes.txt." } });
       expect(d.assistant.tool_calls?.[0].id).toBe(d.toolCallId); // history stays valid
     }
+  });
+  it("treats a fake 'reason' call as a failure with that reason (never as a success)", async () => {
+    const { recoverRejectedGeneration } = await import("./planner.js");
+    const d = recoverRejectedGeneration('{"name": "json", "arguments": {"reason": "Unable to close the editor."}}');
+    expect(d.kind).toBe("action");
+    if (d.kind === "action") expect(d.action).toEqual({ name: "fail", args: { reason: "Unable to close the editor." } });
+  });
+  it("never lets raw JSON become spoken text", async () => {
+    const { recoverRejectedGeneration } = await import("./planner.js");
+    expect(recoverRejectedGeneration('{"name":"x","arguments":{"n":1}}')).toEqual({ kind: "text", assistant: { role: "assistant", content: "" } });
+    expect(recoverRejectedGeneration("[1,2,3]")).toEqual({ kind: "text", assistant: { role: "assistant", content: "" } });
   });
   it("treats plain prose as text (runner nudges once, then accepts it as the summary)", async () => {
     const { recoverRejectedGeneration } = await import("./planner.js");

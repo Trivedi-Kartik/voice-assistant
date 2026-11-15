@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { homeDir } from "./paths.js";
 import type { AgentActionWire } from "../../shared/protocol.js";
 import type { AgentActionResult } from "./skills.js";
+import { clickElement, closeWindowByTitle, focusWindowByTitle, listWindows, setElementText, takeSnapshot, typeIntoFocused, uiAvailable } from "./ui.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -88,6 +89,8 @@ async function windowsUi(a: AgentActionWire): Promise<AgentActionResult> {
       await runPs(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait(${psString(sk)})`);
       return { ok: true, message: `Pressed ${keys.join("+")}.` };
     }
+    case "close_window":
+      return { ok: false, message: "Closing windows on Windows isn't available yet." };
     default:
       return { ok: false, message: `"${a.name}" on UI elements isn't available on Windows yet (coming with accessibility support). Use a file/app skill or keyboard shortcuts instead.` };
   }
@@ -109,35 +112,77 @@ async function hasXdotool(): Promise<boolean> {
 }
 
 async function linuxUi(a: AgentActionWire): Promise<AgentActionResult> {
-  if (isWayland()) {
-    return { ok: false, message: "Controlling windows and the keyboard isn't available on Wayland yet. Use file and app skills instead." };
-  }
-  if (!(await hasXdotool())) return { ok: false, message: "Window control needs xdotool (sudo apt install xdotool)." };
+  const wayland = isWayland();
+  const a11y = await uiAvailable();
+  const xdo = !wayland && (await hasXdotool());
+
   switch (a.name) {
-    case "focus_window": {
-      try {
-        await execFileAsync("xdotool", ["search", "--name", str(a.args.title), "windowactivate", "--sync"], { timeout: 5000 });
-        return { ok: true, message: `Switched to "${str(a.args.title)}".` };
-      } catch {
-        return { ok: false, message: `No window titled "${str(a.args.title)}" found.` };
-      }
+    // Accessibility-driven (works on Wayland and X11): operate controls by id/name, no pixels.
+    case "click": {
+      if (!a11y) return { ok: false, message: "Clicking needs the accessibility library (sudo apt install python3-gi gir1.2-atspi-2.0)." };
+      const r = await clickElement(str(a.args.element));
+      return r.ok && a.args.double === true ? { ok: false, message: "Double-click isn't supported through accessibility — click once or use a keyboard shortcut." } : r;
     }
-    case "type_text":
-      await execFileAsync("xdotool", ["type", "--delay", "15", "--", str(a.args.text)], { timeout: 30_000 });
-      return { ok: true, message: "Typed the text." };
+    case "set_text": {
+      if (!a11y) return { ok: false, message: "Typing into fields needs the accessibility library (sudo apt install python3-gi gir1.2-atspi-2.0)." };
+      return setElementText(str(a.args.element), str(a.args.text));
+    }
+    case "type_text": {
+      // X11: real key events (works in any app). Wayland: insert into the focused text field via accessibility.
+      if (xdo) {
+        await execFileAsync("xdotool", ["type", "--delay", "15", "--", str(a.args.text)], { timeout: 30_000 });
+        return { ok: true, message: "Typed the text." };
+      }
+      if (a11y) return typeIntoFocused(str(a.args.text));
+      return { ok: false, message: "I can't type into other apps on this system yet." };
+    }
+    case "focus_window": {
+      if (xdo) {
+        try {
+          await execFileAsync("xdotool", ["search", "--name", str(a.args.title), "windowactivate", "--sync"], { timeout: 5000 });
+          return { ok: true, message: `Switched to "${str(a.args.title)}".` };
+        } catch {
+          return { ok: false, message: `No window titled "${str(a.args.title)}" found.` };
+        }
+      }
+      return a11y ? focusWindowByTitle(str(a.args.title)) : { ok: false, message: "I can't switch windows on this system yet." };
+    }
+    case "close_window": {
+      if (!a11y) return { ok: false, message: "Closing windows needs the accessibility library (sudo apt install python3-gi gir1.2-atspi-2.0)." };
+      const r = await closeWindowByTitle(str(a.args.title));
+      return { ok: r.ok, message: r.message, ...(r.elements ? { observation: { elements: r.elements } } : {}) };
+    }
     case "hotkey": {
+      if (!xdo) return { ok: false, message: "Keyboard shortcuts aren't available on this desktop yet — click the matching button or menu item instead." };
       const keys = Array.isArray(a.args.keys) ? a.args.keys.map((k) => String(k).toLowerCase()) : [];
       const combo = keys.map((k) => XDO_KEYS[k] ?? (k.length === 1 ? k : `F${k.replace(/^f/, "")}`)).join("+");
       await execFileAsync("xdotool", ["key", "--", combo], { timeout: 5000 });
       return { ok: true, message: `Pressed ${keys.join("+")}.` };
     }
     default:
-      return { ok: false, message: `"${a.name}" on UI elements isn't available on Linux yet. Use a file/app skill or keyboard shortcuts instead.` };
+      return { ok: false, message: `"${a.name}" isn't available on Linux yet.` };
   }
 }
 
-export function runUiAction(a: AgentActionWire): Promise<AgentActionResult> {
-  return process.platform === "win32" ? windowsUi(a) : linuxUi(a);
+// UI actions get the fresh state of the window attached to their result (after a short settle delay), so the
+// planner sees what its click/typing did without an extra round-trip. Without the delay the read caught the
+// Calculator mid-update ("7+" instead of "12") in testing.
+const SETTLE_MS = 600;
+
+export async function runUiAction(a: AgentActionWire): Promise<AgentActionResult> {
+  const result = await (process.platform === "win32" ? windowsUi(a) : linuxUi(a));
+  if (!result.ok || process.platform === "win32") return result;
+  await new Promise((r) => setTimeout(r, SETTLE_MS));
+  const snap = await takeSnapshot("");
+  return snap.ok ? { ...result, observation: { elements: snap.text } } : result;
+}
+
+// The explicit `observe` action: windows + the active window's elements.
+export async function observeUi(windowQuery = ""): Promise<AgentActionResult> {
+  const obs = await observe();
+  if (process.platform === "win32") return { ok: true, message: "Looked at the screen.", observation: obs };
+  const snap = await takeSnapshot(windowQuery);
+  return { ok: true, message: snap.ok ? "Looked at the active window." : snap.message, observation: { ...obs, ...(snap.ok ? { elements: snap.text } : {}) } };
 }
 
 // ---------------- Observation ----------------
@@ -151,11 +196,17 @@ export async function observe(): Promise<Observation> {
       const parsed = JSON.parse(await runPs(WIN_OBSERVE)) as { active?: string; windows?: { title: string; app?: string }[] };
       if (parsed.active) obs.activeWindow = { title: parsed.active };
       obs.windows = Array.isArray(parsed.windows) ? parsed.windows : parsed.windows ? [parsed.windows as never] : [];
-    } else if (isWayland()) {
-      notes.push("Linux Wayland session: open windows can't be listed or controlled yet — prefer file and app skills.");
-    } else if (await hasXdotool()) {
+    } else if (await uiAvailable()) {
+      const wins = await listWindows();
+      const active = wins.find((w) => w.active);
+      if (active) obs.activeWindow = { title: active.title, app: active.app };
+      obs.windows = wins.map((w) => ({ title: w.title, app: w.app }));
+      if (isWayland()) notes.push("Wayland: apps are operated through accessibility (click/set_text by element id); keyboard shortcuts and window raising are limited.");
+    } else if (!isWayland() && (await hasXdotool())) {
       const { stdout } = await execFileAsync("xdotool", ["getactivewindow", "getwindowname"], { timeout: 3000 });
       obs.activeWindow = { title: stdout.trim() };
+    } else {
+      notes.push("Reading app windows isn't available (install python3-gi and gir1.2-atspi-2.0).");
     }
   } catch (err) {
     notes.push(`(window information unavailable: ${(err as Error).message.slice(0, 120)})`);

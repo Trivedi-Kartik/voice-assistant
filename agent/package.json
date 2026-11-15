@@ -1,7 +1,7 @@
 {
   "name": "karvix",
   "version": "0.1.0",
-  "description": "Karvix — a voice assistant that can actually act on your computer.",
+  "description": "Karvix \u2014 a voice assistant that can actually act on your computer.",
   "author": "Karvix",
   "license": "MIT",
   "private": true,
@@ -12,11 +12,12 @@
     "dev:renderer": "vite",
     "dev:electron": "wait-on -t 60000 tcp:5173 dist/main/index.js && electron .",
     "build": "npm run build:renderer && npm run build:main",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "tsc -p tsconfig.main.json && node scripts/copy-assets.js",
     "build:renderer": "vite build",
     "start": "electron .",
     "package": "npm run build && electron-builder",
-    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit"
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test": "npm run build:main && node --test test/"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

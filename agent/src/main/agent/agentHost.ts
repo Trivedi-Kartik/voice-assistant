@@ -2,8 +2,9 @@ import fs from "node:fs";
 import type { BrowserWindow } from "electron";
 import type { AgentActionWire, AgentExpectationWire, ClientMessage, ServerMessage } from "../../shared/protocol.js";
 import { SKILLS, skillErrorMessage, type AgentActionResult } from "./skills.js";
-import { observe, runUiAction } from "./desktop.js";
+import { observe, observeUi, runUiAction } from "./desktop.js";
 import { resolveUserPath } from "./paths.js";
+import { isTerminalWindow } from "./guards.js";
 
 // Device side of the Karvix 2 PC agent: answers the server's agent_request (observe / act / verify) and
 // mirrors agent_status into the existing "automation" panel (goal + live steps + Stop).
@@ -12,7 +13,7 @@ import { resolveUserPath } from "./paths.js";
 // delete/overwrite; click/type on risky or secret fields is refused here) regardless of what the server
 // asked for.
 
-const UI_ACTIONS = new Set(["focus_window", "click", "set_text", "type_text", "hotkey"]);
+const UI_ACTIONS = new Set(["focus_window", "close_window", "click", "set_text", "type_text", "hotkey"]);
 const SECRET_FIELD = /\b(password|passcode|pin|otp|cvv|cvc|card number)\b/i;
 
 type Send = (msg: ClientMessage) => void;
@@ -25,11 +26,18 @@ async function act(a: AgentActionWire): Promise<AgentActionResult> {
   if ((a.name === "type_text" || a.name === "set_text") && SECRET_FIELD.test(String(a.args.element ?? ""))) {
     return { ok: false, message: "I won't type into password or payment fields — please do that yourself." };
   }
+  // Typing/shortcuts into a terminal would run commands — refuse, whatever the server asked for.
+  if (a.name === "type_text" || a.name === "hotkey" || a.name === "set_text") {
+    const o = await observe().catch(() => undefined);
+    if (isTerminalWindow(o?.activeWindow?.app, o?.activeWindow?.title)) {
+      return { ok: false, message: "A terminal is in front, and I never type into terminals (a newline would run a command). Use the file skills instead." };
+    }
+  }
   const skill = SKILLS[a.name];
   try {
     if (skill) return await skill(a);
     if (UI_ACTIONS.has(a.name)) return await runUiAction(a);
-    if (a.name === "observe") return { ok: true, message: "Looked at the screen.", data: await observe() };
+    if (a.name === "observe") return await observeUi();
     return { ok: false, message: `Unknown action "${a.name}".` };
   } catch (err) {
     return { ok: false, message: skillErrorMessage(err) };

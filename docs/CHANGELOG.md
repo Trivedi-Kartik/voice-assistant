@@ -4,6 +4,32 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-15 — Phase 2 started: the agent can operate real app windows (Linux accessibility)
+
+New: `agent/src/main/agent/ui.ts` + `a11y/atspi_helper.py` read a window's real controls (role, name, value, state)
+through AT-SPI and press/type/close them — no pixels, and it works on Wayland, where synthetic mouse/keyboard
+input is impossible. Elements get ids that stay stable while the same app is open; an action re-checks the
+element's role+name first so a stale id refuses instead of clicking the wrong thing. New actions: `close_window`
+(uses the window's own Close button, reports success only when the window count really drops, and surfaces a
+"Save changes?" dialog instead of hiding it), focus/type via accessibility; every UI action returns a fresh
+window listing after a short settle delay. Device-side guard: the agent never types or presses keys into a
+terminal/shell window (a newline would run a command) — found when a planner tried `nano ~/file\n` in one.
+
+Proven on this Wayland laptop with the real helper: GNOME Calculator 7 + 5 = 12 (real button presses, result read
+back), stale-element refusal. Planner-driven runs (real Groq planner, real apps): 7+5 and 12x12 in the calculator
+and "append a line to todo.txt, open it in the editor, close it" passed — with 4-5 steps on gpt-oss-120b, but see
+below. Real bugs the real runs exposed and fixed: the helper wasn't copied into the build (a packaged app would
+never have found it) and its dev fallback path was wrong; a planner that claimed it had closed a window it never
+closed (summary must now describe only what succeeded; checks now look at real windows); element ids renumbered
+after every click so the model clicked wrong keys (now stable); every step's full window listing stayed in the
+context (slow, rate-limited, stale — now only the newest is kept); raw tool-call JSON reaching the spoken summary.
+
+NOT done / not measured: Windows UI Automation (nothing written yet — cannot be tested on this machine),
+keyboard shortcuts on Wayland (needs the xdg-desktop-portal RemoteDesktop work, Phase 4), browser/WhatsApp
+(Phase 3). The main-model numbers above predate the last four fixes: re-measuring is blocked by the free Groq
+key's ~200K tokens/day (it was exhausted again by testing); the smaller gpt-oss-20b used for the later runs
+wanders (14-23 steps) and is not representative. Server 114 tests, agent 3 node:test tests passing.
+
 ## 2026-11-15 — Phase 1 complete: Karvix 2 PC agent kernel (files, folders, apps, clipboard — by voice)
 
 Voice tasks on the user's computer now run through a new agent engine (`server/src/agent/`, device side
