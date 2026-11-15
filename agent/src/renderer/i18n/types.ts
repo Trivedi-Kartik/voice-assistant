@@ -78,6 +78,17 @@ export interface Dictionary {
     saveKey: string;
     groqKeySaved: string;
     groqKeyError: string;
+    plannerTitle: string;
+    plannerHint: string;
+    plannerProviderLabel: string;
+    plannerModelLabel: string;
+    plannerKeyLabel: string;
+    plannerSave: string;
+    plannerSaved: string;
+    plannerError: string;
+    plannerReset: string;
+    plannerUsing: string;
+    plannerDefault: string;
     myAppsTitle: string;
     myAppsHint: string;
     remove: string;

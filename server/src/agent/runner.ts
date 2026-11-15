@@ -174,8 +174,10 @@ export class AgentRunner {
       try {
         decision = await this.opts.planner.next(this.messages);
       } catch (err) {
-        console.error("[agent] planner failed", err);
-        return this.end({ kind: "failed", reason: "I couldn't work out the next step right now. Please try again." });
+        console.error("[agent] planner failed", err instanceof Error ? err.message : err);
+        // A provider problem the user can act on (bad key, unknown model, no credit…) is spoken as such.
+        const friendly = (err as { userMessage?: unknown })?.userMessage;
+        return this.end({ kind: "failed", reason: typeof friendly === "string" ? friendly : "I couldn't work out the next step right now. Please try again." });
       }
       if (this.cancelled) return this.end({ kind: "cancelled" });
 

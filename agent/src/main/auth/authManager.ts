@@ -136,6 +136,31 @@ class AuthManager {
     return data.ticket;
   }
 
+  // Optional: the user's own model for the PC agent (providers are a fixed server-side allowlist). The key is sent to the
+  // server once and never comes back.
+  async getPlannerModel(): Promise<{ providers: { id: string; label: string }[]; current: { provider: string; model: string } | null }> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/me/planner-model`, { headers: { Authorization: `Bearer ${this.session.accessToken}` } });
+    if (!res.ok) throw new Error("get_planner_failed");
+    return (await res.json()) as { providers: { id: string; label: string }[]; current: { provider: string; model: string } | null };
+  }
+
+  async setPlannerModel(provider: string, model: string, apiKey: string): Promise<void> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/me/planner-model`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.session.accessToken}` },
+      body: JSON.stringify({ provider, model, apiKey }),
+    });
+    if (!res.ok) throw new Error("set_planner_failed");
+  }
+
+  async clearPlannerModel(): Promise<void> {
+    if (!this.session) throw new Error("not_logged_in");
+    const res = await fetch(`${SERVER_HTTP_URL}/auth/me/planner-model`, { method: "DELETE", headers: { Authorization: `Bearer ${this.session.accessToken}` } });
+    if (!res.ok) throw new Error("clear_planner_failed");
+  }
+
   async setGroqKey(apiKey: string): Promise<void> {
     if (!this.session) throw new Error("not_logged_in");
     const res = await fetch(`${SERVER_HTTP_URL}/auth/me/groq-key`, {

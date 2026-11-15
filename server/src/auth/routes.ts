@@ -9,6 +9,7 @@ import { requireAuth, type AuthedRequest } from "./middleware.js";
 import { encryptApiKey } from "../crypto.js";
 import { env } from "../env.js";
 import { SUPPORTED_LANGUAGES } from "../i18n/languages.js";
+import { MODEL_NAME, PROVIDER_IDS, PROVIDERS } from "../agent/providers.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { loginLimiter, signupLimiter, refreshLimiter } from "./authRateLimit.js";
 
@@ -166,6 +167,49 @@ authRouter.delete(
   requireAuth,
   asyncHandler<AuthedRequest>(async (req, res) => {
     await db.user.update({ where: { id: req.auth!.userId }, data: { groqApiKeyEnc: null } });
+    res.status(204).end();
+  })
+);
+
+// Optional: the user's OWN model for the PC agent (provider from a fixed allowlist; the key is stored encrypted like the
+// Groq BYOK key and never sent back). Groq stays the default and nothing ever switches to this automatically.
+authRouter.get(
+  "/me/planner-model",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const u = await db.user.findUniqueOrThrow({ where: { id: req.auth!.userId }, select: { plannerProvider: true, plannerModel: true, plannerApiKeyEnc: true } });
+    const set = Boolean(u.plannerProvider && u.plannerModel && u.plannerApiKeyEnc);
+    res.json({
+      providers: PROVIDER_IDS.map((id) => ({ id, label: PROVIDERS[id].label })),
+      current: set ? { provider: u.plannerProvider, model: u.plannerModel } : null,
+    });
+  })
+);
+
+authRouter.put(
+  "/me/planner-model",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    const parsed = z
+      .object({ provider: z.enum(PROVIDER_IDS), model: z.string().regex(MODEL_NAME), apiKey: z.string().min(10).max(400) })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "invalid_request" });
+      return;
+    }
+    await db.user.update({
+      where: { id: req.auth!.userId },
+      data: { plannerProvider: parsed.data.provider, plannerModel: parsed.data.model, plannerApiKeyEnc: encryptApiKey(parsed.data.apiKey) },
+    });
+    res.status(204).end();
+  })
+);
+
+authRouter.delete(
+  "/me/planner-model",
+  requireAuth,
+  asyncHandler<AuthedRequest>(async (req, res) => {
+    await db.user.update({ where: { id: req.auth!.userId }, data: { plannerProvider: null, plannerModel: null, plannerApiKeyEnc: null } });
     res.status(204).end();
   })
 );

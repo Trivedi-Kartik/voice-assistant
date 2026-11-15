@@ -19,10 +19,51 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { language, setLanguage } = useAppStore();
   const [languageStatus, setLanguageStatus] = useState<"idle" | "saving" | "error">("idle");
   const t = useDictionary();
+  // Optional: the user's own model for computer tasks (server keeps the key; Karvix never switches models by itself).
+  const [providers, setProviders] = useState<{ id: string; label: string }[]>([]);
+  const [current, setCurrent] = useState<{ provider: string; model: string } | null>(null);
+  const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
+  const [plannerKey, setPlannerKey] = useState("");
+  const [plannerStatus, setPlannerStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
     window.jarvis.customApps.list().then(setCustomApps);
+    window.jarvis.planner
+      .get()
+      .then((p) => {
+        setProviders(p.providers);
+        setCurrent(p.current);
+        setProvider(p.current?.provider ?? p.providers[0]?.id ?? "");
+        setModel(p.current?.model ?? "");
+      })
+      .catch(() => undefined); // an older server without this setting simply hides the section
   }, []);
+
+  async function savePlanner() {
+    setPlannerStatus("saving");
+    try {
+      await window.jarvis.planner.set(provider, model.trim(), plannerKey.trim());
+      setCurrent({ provider, model: model.trim() });
+      setPlannerKey("");
+      setPlannerStatus("saved");
+    } catch {
+      setPlannerStatus("error");
+    }
+  }
+
+  async function resetPlanner() {
+    setPlannerStatus("saving");
+    try {
+      await window.jarvis.planner.clear();
+      setCurrent(null);
+      setModel("");
+      setPlannerKey("");
+      setPlannerStatus("idle");
+    } catch {
+      setPlannerStatus("error");
+    }
+  }
 
   async function save() {
     setStatus("saving");
@@ -92,6 +133,44 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
         {status === "saved" && <div className="success-banner">{t.settings.groqKeySaved}</div>}
         {status === "error" && <div className="error-banner">{t.settings.groqKeyError}</div>}
       </section>
+
+      {providers.length > 0 && (
+        <section className="settings-card">
+          <h3 className="settings-card-title">{t.settings.plannerTitle}</h3>
+          <p className="hint">{t.settings.plannerHint}</p>
+          <p className="hint">
+            {current ? `${t.settings.plannerUsing} ${providers.find((p) => p.id === current.provider)?.label ?? current.provider} · ${current.model}` : t.settings.plannerDefault}
+          </p>
+          <div className="field">
+            <label>{t.settings.plannerProviderLabel}</label>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>{t.settings.plannerModelLabel}</label>
+            <input type="text" value={model} onChange={(e) => setModel(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>{t.settings.plannerKeyLabel}</label>
+            <input type="password" value={plannerKey} onChange={(e) => setPlannerKey(e.target.value)} />
+          </div>
+          <button className="cta" onClick={savePlanner} disabled={!provider || !model.trim() || plannerKey.trim().length < 10 || plannerStatus === "saving"}>
+            {plannerStatus === "saving" ? t.settings.saving : t.settings.plannerSave}
+          </button>
+          {current && (
+            <button type="button" className="link-button" onClick={resetPlanner} disabled={plannerStatus === "saving"}>
+              {t.settings.plannerReset}
+            </button>
+          )}
+          {plannerStatus === "saved" && <div className="success-banner">{t.settings.plannerSaved}</div>}
+          {plannerStatus === "error" && <div className="error-banner">{t.settings.plannerError}</div>}
+        </section>
+      )}
 
       <section className="settings-card">
         <h3 className="settings-card-title">{t.settings.myAppsTitle}</h3>

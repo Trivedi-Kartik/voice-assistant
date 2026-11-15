@@ -25,7 +25,7 @@ import { trimHistory } from "./historyTrim.js";
 import { env } from "../env.js";
 import { speech } from "../tts/index.js";
 import { AgentRunner } from "../agent/runner.js";
-import { GroqPlanner } from "../agent/planner.js";
+import { selectPlanner } from "../agent/plannerSelection.js";
 import { WsAgentDevice } from "../agent/wsDevice.js";
 import type { AgentOutcome } from "../agent/types.js";
 import { createTask, appendTaskStep, completeTask, type TaskStatus, type TaskStepKind } from "../tasks/taskStore.js";
@@ -651,8 +651,8 @@ export class Session {
     const parsed = z.object({ goal: z.string().min(2).max(2000) }).safeParse(args);
     if (!parsed.success) return { ok: false, message: "I didn't get what to do on the computer." };
     this.cancelAgent(); // one task at a time
-    const { apiKey, isByok } = await resolveGroqKey(this.userId);
-    const allowance = await checkAndConsumePcTask(this.userId, isByok).catch(() => ({ allowed: true, remaining: 0 }));
+    const selected = await selectPlanner(this.userId);
+    const allowance = await checkAndConsumePcTask(this.userId, selected.usesOwnKey).catch(() => ({ allowed: true, remaining: 0 }));
     if (!allowance.allowed) return { ok: false, message: getMessages(this.language).pcTaskLimitReached(env.pcTaskDailyCap) };
     const taskId = uuid();
     const device = new WsAgentDevice(taskId, (m) => this.send(m));
@@ -661,7 +661,7 @@ export class Session {
       goal: parsed.data.goal,
       language: this.language,
       device,
-      planner: new GroqPlanner(apiKey),
+      planner: selected.planner,
       onStatus: (s) => this.send({ type: "agent_status", taskId, ...s }),
     });
     this.activeAgent = runner;

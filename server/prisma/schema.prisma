@@ -22,6 +22,11 @@ model User {
   displayName     String?  @map("display_name")
   plan            String   @default("free") // 'free' | 'pro' (pro unused until billing exists)
   groqApiKeyEnc   Bytes?   @map("groq_api_key_enc") // AES-256-GCM ciphertext of user's own Groq key (BYOK)
+  // Optional: the user's OWN model for the PC agent (provider from a fixed allowlist, see agent/providers.ts). Never
+  // chosen automatically — only used when the user set it, and a failure is reported, not silently retried on Groq.
+  plannerProvider  String? @map("planner_provider")
+  plannerModel     String? @map("planner_model")
+  plannerApiKeyEnc Bytes?  @map("planner_api_key_enc") // AES-256-GCM ciphertext, same scheme as groqApiKeyEnc
   // One of the 8 languages Meta officially validated Llama 3.3 70B on — see
   // docs/ARCHITECTURE.md "Multi-language support". A personal, per-account
   // preference (follows the user across devices), same precedent as

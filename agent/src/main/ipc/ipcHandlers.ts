@@ -46,6 +46,13 @@ export function registerIpcHandlers(ctx: IpcContext): void {
     ctx.onLoggedOut();
   });
 
+  ipcMain.handle("planner:get", () => authManager.getPlannerModel());
+  ipcMain.handle("planner:set", async (_e, provider: unknown, model: unknown, apiKey: unknown) => {
+    if (typeof provider !== "string" || typeof model !== "string" || typeof apiKey !== "string") throw new Error("invalid_request");
+    await authManager.setPlannerModel(provider, model, apiKey);
+  });
+  ipcMain.handle("planner:clear", () => authManager.clearPlannerModel());
+
   ipcMain.handle("auth:setGroqKey", async (_e, apiKey: string) => {
     await authManager.setGroqKey(apiKey);
   });

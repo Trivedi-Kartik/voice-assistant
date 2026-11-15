@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld("jarvis", {
       ipcRenderer.on("auth:sessionChanged", (_e, payload) => cb(payload));
     },
   },
+  planner: {
+    get: () => ipcRenderer.invoke("planner:get"),
+    set: (provider: string, model: string, apiKey: string) => ipcRenderer.invoke("planner:set", provider, model, apiKey),
+    clear: () => ipcRenderer.invoke("planner:clear"),
+  },
   settings: {
     setLanguage: (language: string) => ipcRenderer.invoke("settings:setLanguage", language),
   },

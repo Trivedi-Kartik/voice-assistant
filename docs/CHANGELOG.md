@@ -4,6 +4,38 @@ All notable changes to this project are logged here, most recent first.
 This file is updated every time we add or change something — treat it as the
 source of truth for "what actually exists right now" vs. the Roadmap's "what's next."
 
+## 2026-11-15 — Phases 2-4 build-out: settings, web, Wayland keyboard, Windows, bring-your-own model
+
+**Deploy order matters (database):** `server/prisma/migrations/20261115120000_add_planner_model` adds three nullable
+columns to `users`. It was validated on a throwaway Postgres (all 6 migrations apply from scratch, zero drift from
+`schema.prisma`) but has NOT been applied to production. Apply it (`npm run prisma:migrate:deploy`) BEFORE deploying this
+server, or every query on the users table (login included) will fail on the missing columns.
+
+- **System settings** (`system` action): volume, brightness, dark mode, do-not-disturb, Wi-Fi, Bluetooth, lock screen.
+  Linux tested on the dev laptop (every value changed and restored); Windows best-effort/untested. Anything that can cut
+  the user off (Wi-Fi/Bluetooth off, lock) asks first, on the server and again on the device, localized in 8 languages.
+- **Web route** (`web` action): playwright-core drives a dedicated Karvix Chrome profile through the page's DOM (stable
+  [w..] ids; page text marked untrusted). The device refuses password/payment fields and non-http(s) URLs and requires a
+  spoken yes for Place order/Pay/Send/Delete clicks even if the page itself demands them. Verified against a local mock
+  shop with the real planner: shop to checkout without ordering; a full purchase where the agent fills name/address,
+  hands the card number to the user and stops at "Place order" until a yes; a prompt-injection page ignored.
+  WhatsApp is guided through WhatsApp Web in that profile — UNTESTED (needs a logged-in account).
+- **Wayland keyboard** (Phase 4): typing and shortcuts through the xdg-desktop-portal RemoteDesktop portal. The user
+  approves once in the system dialog; the restore token is saved and later sessions start silently (0.1 s measured).
+  Keystrokes are refused unless exactly one window has the keyboard and it is the one the agent works in (found when test
+  keystrokes aimed at the Calculator landed in the user's browser). The agent never clicks/types into system permission or
+  password dialogs. Verified: portal typing 6*7 -> 42, accessibility clicks 9x8 -> 72, close_window, Ctrl+Q. Planner-driven
+  UI tasks on gpt-oss-120b: 3/3 (calculator 7+5, 12x12, edit + close in the text editor).
+- **Windows**: `uia_helper.ps1` (UI Automation) mirrors the Linux helper behind one `provider.ts`; Windows now has
+  click/set_text/focus/close_window and fresh window listings. UNTESTED on real Windows: `agent/test/uia-smoke.ps1` +
+  `.github/workflows/windows-ui.yml` launch Notepad on a GitHub Windows runner to check it automatically after a push.
+- **Bring your own model** (decision 2026-11-14): Settings -> "Computer-control model" lets a user choose OpenAI, Anthropic,
+  Google Gemini, OpenRouter, Together, Mistral or DeepSeek with their own key (fixed host allowlist — no user-supplied URL,
+  so no SSRF; key stored AES-GCM like the Groq BYOK key and never returned). Used only for PC tasks, only if set; Groq
+  stays the default and there is NO automatic fallback — a provider failure is spoken plainly ("OpenAI rejected your API
+  key…"). Such users are exempt from the shared-key daily cap. Adapters verified with a fake network (OpenAI-style and
+  Anthropic message conversion, error mapping, key never in errors); NOT tried against a real third-party API.
+
 ## 2026-11-15 — Phase 2 started: the agent can operate real app windows (Linux accessibility)
 
 New: `agent/src/main/agent/ui.ts` + `a11y/atspi_helper.py` read a window's real controls (role, name, value, state)

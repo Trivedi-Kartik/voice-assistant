@@ -35,6 +35,11 @@ export interface JarvisApi {
     setGroqKey(apiKey: string): Promise<void>;
     onSessionChanged(cb: (payload: { loggedIn: boolean }) => void): void;
   };
+  planner: {
+    get(): Promise<{ providers: { id: string; label: string }[]; current: { provider: string; model: string } | null }>;
+    set(provider: string, model: string, apiKey: string): Promise<void>;
+    clear(): Promise<void>;
+  };
   settings: {
     setLanguage(language: string): Promise<void>;
   };
